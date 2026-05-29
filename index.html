@@ -350,6 +350,12 @@ body::before{
 .gn-num{font-family:'Black Han Sans',sans-serif;color:var(--gold);min-width:3.8rem;text-align:right;font-size:.82rem;flex-shrink:0;white-space:nowrap;}
 .gn-input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.45rem .75rem;color:var(--text);font-family:inherit;font-size:.88rem;outline:none;}
 .gn-input:focus{border-color:var(--gold);}
+/* p1 right column */
+.p1-right-col{display:contents;}
+@media(min-width:960px){
+  .p1-right-col{display:flex;flex-direction:column;gap:.9rem;}
+  .p1-right-col>.panel{max-width:100%;margin-bottom:0;}
+}
 .gn-preview{font-size:.72rem;color:var(--gold);white-space:nowrap;opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;}
 /* ── GENDER SEP INDICATOR ── */
 .gsep-box{width:100%;max-width:880px;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1rem;border-radius:10px;font-size:.88rem;font-weight:600;margin-bottom:.7rem;}
@@ -394,6 +400,7 @@ body::before{
     <div id="student-list"><div class="empty-hint">아래에서 학생을 추가하세요</div></div>
   </div>
 
+  <div class="p1-right-col">
   <!-- 학생 추가 (탭) -->
   <div class="panel" id="p1-panel-add">
     <div class="panel-header"><span class="panel-header-text">학생 추가</span></div>
@@ -448,10 +455,29 @@ body::before{
     </div>
   </div>
 
+  <!-- 모둠 설정 패널 -->
+  <div class="panel" id="p1-panel-group">
+    <div class="panel-header">
+      <span class="panel-header-text">모둠 설정</span>
+      <span class="badge" id="p1-avg-badge">모둠당 —명</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:.8rem;padding-bottom:.9rem;border-bottom:1px solid var(--border);margin-bottom:.8rem;">
+      <span style="font-size:.9rem;font-weight:600;flex:1;">모둠 수</span>
+      <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustGroups(-1)">−</button>
+      <span id="p1-gc-display" style="font-family:'Black Han Sans',sans-serif;font-size:1.8rem;color:var(--gold);min-width:2.5rem;text-align:center;">4</span>
+      <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustGroups(1)">+</button>
+    </div>
+    <div style="font-size:.75rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:.65rem;display:flex;justify-content:space-between;align-items:center;">
+      <span>모둠 이름 설정</span><span style="font-weight:400;text-transform:none;letter-spacing:0;">선택 · 빈칸은 기본값</span>
+    </div>
+    <div class="group-names-scroll" id="group-names-list"></div>
+  </div>
+  </div><!-- /p1-right-col -->
   </div><!-- /p1-panels-grid -->
   <div class="page-footer">
     <button class="btn btn-outline" style="flex:1" onclick="clearAllStudents()">전체 삭제</button>
-    <button class="btn btn-gold" style="flex:2" onclick="goP2()">다음 단계 →</button>
+    <button class="btn btn-outline" style="flex:1" id="save-btn" onclick="saveSettings(this)">💾 설정 저장</button>
+    <button class="btn btn-gold" style="flex:2" onclick="goToP3()">추첨 시작 →</button>
   </div>
 </div>
 
@@ -476,7 +502,7 @@ body::before{
       <div style="font-size:.76rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem;display:flex;justify-content:space-between;align-items:center;">
         <span>모둠 이름 설정</span><span style="font-weight:400;font-size:.72rem;text-transform:none;letter-spacing:0;">선택 · 빈칸은 숫자 기본값</span>
       </div>
-      <div class="group-names-scroll" id="group-names-list"></div>
+      <!-- group-names moved to P1 -->
     </div>
     <div style="display:flex;gap:.7rem;width:100%;margin-top:.5rem;">
       <button class="btn btn-outline" style="flex:1" onclick="showPage('p1')">← 이전</button>
@@ -623,9 +649,12 @@ async function init() {
       ST.preset         = d.preset         || null;
       ST.presetEnabled  = d.presetEnabled  || false;
       ST.groupNames     = d.groupNames     || [];
+      ST.groupCount     = d.groupCount     || 4;
     }
   } catch(e) { console.warn('Firebase 로드 실패:', e.message); }
+  updateGroupNames(ST.groupCount);
   renderP1();
+  renderGroupNames();
   showPage('p1');
 }
 
@@ -637,6 +666,7 @@ async function saveDB() {
       preset:         ST.preset,
       presetEnabled:  ST.presetEnabled,
       groupNames:     ST.groupNames,
+      groupCount:     ST.groupCount,
     }, { merge: true });
   } catch(e) { console.warn('저장 실패:', e.message); }
 }
@@ -646,6 +676,7 @@ async function saveDB() {
 // ══════════════════════
 function renderP1() {
   document.getElementById('tog-sep').checked = ST.separateGender;
+  updateGroupSettingsUI();
   document.getElementById('stu-cnt-badge').textContent = ST.students.length + '명';
   const list = document.getElementById('student-list');
   if (!ST.students.length) {
@@ -755,14 +786,20 @@ function clearAllStudents() {
   renderP1();
 }
 
-async function goP2() {
+async function goToP3() {
   if (!ST.students.length) { alert('학생을 1명 이상 입력하세요.'); return; }
+  await saveDB();  // 자동 저장
+  showPage('p3');
+}
+
+async function saveSettings(btn) {
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
   await saveDB();
-  ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount));
-  updateGroupNames(ST.groupCount);
-  updateP2();
-  renderGroupNames();
-  showPage('p2');
+  if (btn) {
+    btn.textContent = '✅ 저장됨';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  }
 }
 
 // ── 제목 5초 꾹 누르기 → 어드민 ──
@@ -824,10 +861,22 @@ function updateP2() {
 }
 
 function adjustGroups(d) {
-  ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount + d));
+  const max = Math.max(2, ST.students.length);
+  ST.groupCount = Math.max(2, Math.min(max, ST.groupCount + d));
   updateGroupNames(ST.groupCount);
-  updateP2();
+  updateGroupSettingsUI();
   renderGroupNames();
+}
+
+function updateGroupSettingsUI() {
+  const n   = ST.groupCount;
+  const tot = ST.students.length;
+  const gcEl  = document.getElementById('p1-gc-display');
+  const avgEl = document.getElementById('p1-avg-badge');
+  if (gcEl)  gcEl.textContent  = n;
+  if (avgEl) avgEl.textContent = tot > 0
+    ? `모둠당 평균 ${(tot / n).toFixed(1)}명`
+    : '모둠당 —명';
 }
 
 // ══════════════════════
