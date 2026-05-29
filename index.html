@@ -331,9 +331,24 @@ body::before{
   .draw-big-btn{font-size:2.3rem;padding:1.35rem 5.5rem;}
   .admin-layout,.admin-row,.admin-footer{max-width:960px;}
   .results-content{max-width:1300px;}
-  .p1-panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:100%;max-width:860px;align-items:start;}
+  /* P1 그리드: 남은 뷰포트 높이를 채우고 양 컬럼을 동일 높이로 고정 */
+  .p1-panels-grid{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:1rem;width:100%;max-width:860px;
+    align-items:stretch;   /* 양 컬럼 동일 높이 */
+    flex:1;min-height:0;   /* 페이지의 남은 공간 채우기 */
+  }
   .p1-panels-grid>.panel{max-width:100%;margin-bottom:0;}
-  #p1-panel-list{overflow:hidden;}
+  /* 학생 명단 패널 — 내부에서만 스크롤 */
+  #p1-panel-list{display:flex;flex-direction:column;}
+  #p1-panel-list>#student-list{flex:1;min-height:0;display:flex;flex-direction:column;}
+  #p1-panel-list .student-cards{flex:1;max-height:none;min-height:80px;overflow-y:auto;}
+  /* 오른쪽 컬럼 — 추가 패널 + 모둠 설정 패널 수직 배치 */
+  .p1-right-col{display:flex;flex-direction:column;gap:.9rem;min-height:0;}
+  .p1-right-col>.panel{max-width:100%;margin-bottom:0;}
+  /* 모둠 설정 패널 — 남은 공간을 채우고 이름 목록만 스크롤 */
+  #p1-panel-group{display:flex;flex-direction:column;flex:1;min-height:0;}
+  #p1-panel-group .group-names-scroll{flex:1;max-height:none;min-height:80px;overflow-y:auto;}
 }
 @media(min-width:1200px){
   .panel,.p1-header,.page-footer,.btn-full{max-width:1000px;}
@@ -352,10 +367,7 @@ body::before{
 .gn-input:focus{border-color:var(--gold);}
 /* p1 right column */
 .p1-right-col{display:contents;}
-@media(min-width:960px){
-  .p1-right-col{display:flex;flex-direction:column;gap:.9rem;}
-  .p1-right-col>.panel{max-width:100%;margin-bottom:0;}
-}
+
 .gn-preview{font-size:.72rem;color:var(--gold);white-space:nowrap;opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;}
 /* ── GENDER SEP INDICATOR ── */
 .gsep-box{width:100%;max-width:880px;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1rem;border-radius:10px;font-size:.88rem;font-weight:600;margin-bottom:.7rem;}
