@@ -288,6 +288,38 @@ body::before{
 @keyframes spin{to{transform:rotate(360deg);}}
 @keyframes blink{50%{opacity:.3;}}
 .hidden{display:none!important;}
+/* ── RESPONSIVE ── */
+@media(min-width:640px){
+  .panel,.p1-header,.page-footer,.btn-full{max-width:700px;}
+  .p2-inner{max-width:520px;}
+  .avg-box{max-width:520px;}
+  .paste-area{height:150px;}
+}
+@media(min-width:960px){
+  .panel,.p1-header,.page-footer,.btn-full{max-width:860px;}
+  .p2-inner,.avg-box{max-width:580px;}
+  .num-big{font-size:6.5rem;}
+  .mystery-box{width:360px;height:360px;}
+  .mystery-q{font-size:clamp(6rem,12vw,9.5rem);}
+  .draw-big-btn{font-size:2.3rem;padding:1.35rem 5.5rem;}
+  .admin-layout,.admin-row,.admin-footer{max-width:960px;}
+  .results-content{max-width:1300px;}
+  /* P1 두 컬럼 레이아웃 */
+  #pg-p1{flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:flex-start;padding-top:1.5rem;gap:0 1rem;}
+  .p1-header{flex:0 0 100%;}
+  #p1-panel-toggle{flex:0 0 100%;}
+  #p1-panel-list{flex:1 1 calc(50% - .5rem);max-width:420px;margin-bottom:0;align-self:stretch;}
+  #p1-panel-add{flex:1 1 calc(50% - .5rem);max-width:420px;margin-bottom:0;}
+  #pg-p1 .page-footer{flex:0 0 100%;}
+}
+@media(min-width:1200px){
+  .panel,.p1-header,.page-footer,.btn-full{max-width:1000px;}
+  #p1-panel-list,#p1-panel-add{max-width:490px;}
+  .admin-layout,.admin-row,.admin-footer{max-width:1100px;}
+  .mystery-box{width:420px;height:420px;border-radius:48px;}
+  .results-content{max-width:1500px;}
+}
+
 </style>
 </head>
 <body>
@@ -306,7 +338,7 @@ body::before{
   </div>
 
   <!-- 남녀 구분 토글 -->
-  <div class="panel">
+  <div class="panel" id="p1-panel-toggle">
     <div class="toggle-row">
       <span class="toggle-label">👫 남녀 구분 추첨</span>
       <label class="sw">
@@ -317,7 +349,7 @@ body::before{
   </div>
 
   <!-- 학생 명단 -->
-  <div class="panel">
+  <div class="panel" id="p1-panel-list">
     <div class="panel-header">
       <span class="panel-header-text">학생 명단</span>
       <span class="badge" id="stu-cnt-badge">0명</span>
@@ -326,7 +358,7 @@ body::before{
   </div>
 
   <!-- 학생 추가 (탭) -->
-  <div class="panel">
+  <div class="panel" id="p1-panel-add">
     <div class="panel-header"><span class="panel-header-text">학생 추가</span></div>
 
     <div class="input-tabs">
@@ -506,6 +538,7 @@ const ST = {
   adminGroups:    [],
   zoom:           2,       // 0~4
   fullView:       false,
+  currentIsPreset: false,
   glowRAF:        null,
   glowHue:        0,
   glowSpeed:      1,
@@ -747,9 +780,9 @@ function startDraw() {
     b.classList.add('exploding');
     setTimeout(() => {
       ST.drawCount++;
-      const result = computeResult();
+      const { groups, isPreset } = computeResult();
       stopGlow();
-      renderResults(result);
+      renderResults(groups, isPreset);
       showPage('p4');
       setTimeout(() => {
         document.querySelectorAll('.result-card').forEach((c, i) =>
@@ -781,17 +814,19 @@ function splitIntoGroups(names, n, prefix) {
 }
 
 function computeResult() {
-  // 2회차 + 조작 활성화 → 프리셋 반환
+  // 2회차 + 조작 활성화 → 프리셋 반환 (isPreset: true)
   if (ST.drawCount === 2 && ST.presetEnabled && ST.preset && ST.preset.length) {
-    return ST.preset.map(g => ({ ...g, _type: detectGroupType(g) }));
+    const groups = ST.preset.map(g => ({ ...g, _type: detectGroupType(g) }));
+    return { groups, isPreset: true };
   }
+  // 랜덤 추첨
   if (ST.separateGender) {
     const males   = ST.students.filter(s => s.gender === 'M').map(s => s.name);
     const females = ST.students.filter(s => s.gender === 'F').map(s => s.name);
     const n = ST.groupCount;
-    return [...splitIntoGroups(males, n, '남 '), ...splitIntoGroups(females, n, '여 ')];
+    return { groups: [...splitIntoGroups(males, n, '남 '), ...splitIntoGroups(females, n, '여 ')], isPreset: false };
   } else {
-    return splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, '');
+    return { groups: splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, ''), isPreset: false };
   }
 }
 
@@ -809,39 +844,40 @@ function detectGroupType(g) {
 // ══════════════════════
 //  PAGE 4 — 결과
 // ══════════════════════
-function renderResults(groups) {
-  ST.currentResult = groups;
+function renderResults(groups, isPreset = false) {
+  ST.currentResult  = groups;
+  ST.currentIsPreset = isPreset;
   const wrap = document.getElementById('results-content');
+  const gs   = `grid-template-columns:repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`;
 
-  const gridStyle = () => `grid-template-columns:repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`;
-
+  const type = g => g._type || 'mixed';
   const cardHTML = g => `
-    <div class="result-card c-${g._type || 'mixed'}">
-      <div class="card-head ${g._type || 'mixed'}">${g.name}<span class="card-n">${g.members.length}명</span></div>
+    <div class="result-card c-${type(g)}">
+      <div class="card-head ${type(g)}">${g.name}<span class="card-n">${g.members.length}명</span></div>
       ${g.members.map(m => `<span class="member-chip">${m}</span>`).join('')}
     </div>`;
 
-  // 남녀 구분 추첨(랜덤)인 경우 섹션 나눔
-  const hasMale   = groups.some(g => (g._type || '') === 'male');
-  const hasFemale = groups.some(g => (g._type || '') === 'female');
-  const isSplit   = hasMale && hasFemale;
-
-  if (isSplit) {
-    const mG = groups.filter(g => g._type === 'male');
-    const fG = groups.filter(g => g._type === 'female');
+  // 남녀 구분 표시 조건:
+  //  ① 1페이지에서 남녀 구분 ON
+  //  ② 프리셋(조작 결과)이 아닌 경우
+  // → 두 조건 모두 충족할 때만 섹션 분리, 그 외엔 단일 그리드
+  if (ST.separateGender && !isPreset) {
+    const mG = groups.filter(g => type(g) === 'male');
+    const fG = groups.filter(g => type(g) === 'female');
     wrap.innerHTML = `
-      <div class="res-section">
+      ${mG.length ? `<div class="res-section">
         <div class="res-section-title male">🔵 남학생</div>
-        <div class="results-grid" style="${gridStyle()}">${mG.map(cardHTML).join('')}</div>
-      </div>
-      <div class="res-section">
+        <div class="results-grid" style="${gs}">${mG.map(cardHTML).join('')}</div>
+      </div>` : ''}
+      ${fG.length ? `<div class="res-section">
         <div class="res-section-title female">🩷 여학생</div>
-        <div class="results-grid" style="${gridStyle()}">${fG.map(cardHTML).join('')}</div>
-      </div>`;
+        <div class="results-grid" style="${gs}">${fG.map(cardHTML).join('')}</div>
+      </div>` : ''}`;
   } else {
+    // 단일 그리드: 프리셋이거나 남녀 구분 OFF
     wrap.innerHTML = `
       <div class="res-section">
-        <div class="results-grid" style="${gridStyle()}">${groups.map(cardHTML).join('')}</div>
+        <div class="results-grid" style="${gs}">${groups.map(cardHTML).join('')}</div>
       </div>`;
   }
 }
