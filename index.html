@@ -313,6 +313,19 @@ body::before{
   .mystery-box{width:420px;height:420px;border-radius:48px;}
   .results-content{max-width:1500px;}
 }
+/* ── GROUP NAMES ── */
+.group-names-scroll{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:.42rem;padding-right:.2rem;}
+.group-names-scroll::-webkit-scrollbar{width:4px;}
+.group-names-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.gn-row{display:flex;align-items:center;gap:.65rem;}
+.gn-num{font-family:'Black Han Sans',sans-serif;color:var(--gold);min-width:2rem;text-align:right;font-size:.88rem;flex-shrink:0;}
+.gn-input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.45rem .75rem;color:var(--text);font-family:inherit;font-size:.88rem;outline:none;}
+.gn-input:focus{border-color:var(--gold);}
+/* ── GENDER SEP INDICATOR ── */
+.gsep-box{width:100%;max-width:880px;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1rem;border-radius:10px;font-size:.88rem;font-weight:600;margin-bottom:.7rem;}
+.gsep-ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green);}
+.gsep-no{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);}
+.gsep-info{background:var(--surface);border:1px solid var(--border);color:var(--muted);}
 </style>
 </head>
 <body>
@@ -429,6 +442,12 @@ body::before{
       <div class="avg-label">모둠당 평균 인원</div>
       <div class="avg-chips" id="avg-chips"></div>
     </div>
+    <div class="avg-box" style="padding:1.1rem;width:100%;margin-top:0;">
+      <div style="font-size:.76rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem;display:flex;justify-content:space-between;align-items:center;">
+        <span>모둠 이름 설정</span><span style="font-weight:400;font-size:.72rem;text-transform:none;letter-spacing:0;">선택 · 빈칸은 숫자 기본값</span>
+      </div>
+      <div class="group-names-scroll" id="group-names-list"></div>
+    </div>
     <div style="display:flex;gap:.7rem;width:100%;margin-top:.5rem;">
       <button class="btn btn-outline" style="flex:1" onclick="showPage('p1')">← 이전</button>
       <button class="btn btn-gold" style="flex:2" onclick="showPage('p3')">추첨 준비 →</button>
@@ -494,6 +513,7 @@ body::before{
     <div class="admin-groups" id="admin-groups"></div>
   </div>
 
+  <div id="gender-sep-indicator" class="gsep-box gsep-info">⚪ 학생 배정 후 구분 가능 여부를 확인합니다</div>
   <div class="admin-footer">
     <button class="btn btn-outline" style="flex:1" onclick="showPage('p1')">← 돌아가기</button>
     <button class="btn btn-red" style="flex:1" onclick="adminReset()">초기화</button>
@@ -534,11 +554,21 @@ const ST = {
   zoom:           2,       // 0~4
   fullView:       false,
   currentIsPreset: false,
+  groupNames:     [],
   glowRAF:        null,
   glowHue:        0,
   glowSpeed:      1,
 };
-const ZOOM_W = ['120px','158px','200px','248px','310px'];
+const ZOOM_W    = ['120px','158px','200px','248px','310px'];
+const ZOOM_HEAD = ['0.78rem','0.9rem','1.05rem','1.3rem','1.58rem'];
+const ZOOM_CHIP = ['0.7rem', '0.79rem','0.88rem','1.06rem','1.26rem'];
+const ZOOM_PAD  = ['0.75rem','1rem',  '1.3rem', '1.65rem','2.1rem' ];
+
+function applyZoomStyles() {
+  document.querySelectorAll('.card-head').forEach(el   => el.style.fontSize = ZOOM_HEAD[ST.zoom]);
+  document.querySelectorAll('.member-chip').forEach(el => el.style.fontSize = ZOOM_CHIP[ST.zoom]);
+  document.querySelectorAll('.result-card').forEach(el => el.style.padding  = ZOOM_PAD[ST.zoom]);
+}
 
 // ── 페이지 전환 ──
 function showPage(id) {
@@ -562,6 +592,7 @@ async function init() {
       ST.separateGender = d.separateGender !== false;
       ST.preset         = d.preset         || null;
       ST.presetEnabled  = d.presetEnabled  || false;
+      ST.groupNames     = d.groupNames     || [];
     }
   } catch(e) { console.warn('Firebase 로드 실패:', e.message); }
   renderP1();
@@ -575,6 +606,7 @@ async function saveDB() {
       separateGender: ST.separateGender,
       preset:         ST.preset,
       presetEnabled:  ST.presetEnabled,
+      groupNames:     ST.groupNames,
     }, { merge: true });
   } catch(e) { console.warn('저장 실패:', e.message); }
 }
@@ -694,7 +726,9 @@ async function goP2() {
   if (!ST.students.length) { alert('학생을 1명 이상 입력하세요.'); return; }
   await saveDB();
   ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount));
+  updateGroupNames(ST.groupCount);
   updateP2();
+  renderGroupNames();
   showPage('p2');
 }
 
@@ -710,6 +744,26 @@ async function goP2() {
 // ══════════════════════
 //  PAGE 2 — 모둠 수
 // ══════════════════════
+function updateGroupNames(n) {
+  while (ST.groupNames.length < n) ST.groupNames.push('');
+  ST.groupNames = ST.groupNames.slice(0, n);
+}
+
+function renderGroupNames() {
+  const el = document.getElementById('group-names-list');
+  if (!el) return;
+  const n = ST.groupCount;
+  el.innerHTML = Array.from({ length: n }, (_, i) => {
+    const val = ST.groupNames[i] || '';
+    const ph  = (i + 1) + '모둠';
+    return `<div class="gn-row">
+      <span class="gn-num">${i + 1}</span>
+      <input class="gn-input" type="text" value="${val}" placeholder="${ph}"
+        oninput="ST.groupNames[${i}] = this.value">
+    </div>`;
+  }).join('');
+}
+
 function updateP2() {
   const n     = ST.groupCount;
   const total = ST.students.length;
@@ -731,7 +785,9 @@ function updateP2() {
 
 function adjustGroups(d) {
   ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount + d));
+  updateGroupNames(ST.groupCount);
   updateP2();
+  renderGroupNames();
 }
 
 // ══════════════════════
@@ -799,13 +855,16 @@ function shuffle(arr) {
   return a;
 }
 
-function splitIntoGroups(names, n, prefix) {
+function splitIntoGroups(names, n, prefix, customNames) {
   const s = shuffle(names);
-  return Array.from({ length: n }, (_, i) => ({
-    name: prefix + (i + 1) + '모둠',
-    members: s.filter((_, idx) => idx % n === i),
-    _type: prefix === '남 ' ? 'male' : prefix === '여 ' ? 'female' : 'mixed'
-  }));
+  return Array.from({ length: n }, (_, i) => {
+    const cn = customNames && customNames[i] && customNames[i].trim();
+    return {
+      name:    cn || (prefix + (i + 1) + '모둠'),
+      members: s.filter((_, idx) => idx % n === i),
+      _type:   prefix === '남 ' ? 'male' : prefix === '여 ' ? 'female' : 'mixed'
+    };
+  });
 }
 
 function computeResult() {
@@ -819,9 +878,9 @@ function computeResult() {
     const males   = ST.students.filter(s => s.gender === 'M').map(s => s.name);
     const females = ST.students.filter(s => s.gender === 'F').map(s => s.name);
     const n = ST.groupCount;
-    return { groups: [...splitIntoGroups(males, n, '남 '), ...splitIntoGroups(females, n, '여 ')], isPreset: false };
+    return { groups: [...splitIntoGroups(males, n, '남 ', ST.groupNames), ...splitIntoGroups(females, n, '여 ', ST.groupNames)], isPreset: false };
   } else {
-    return { groups: splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, ''), isPreset: false };
+    return { groups: splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, '', ST.groupNames), isPreset: false };
   }
 }
 
@@ -875,6 +934,7 @@ function renderResults(groups, isPreset = false) {
         <div class="results-grid" style="${gs}">${groups.map(cardHTML).join('')}</div>
       </div>`;
   }
+  setTimeout(applyZoomStyles, 20);
 }
 
 function zoom(d) {
@@ -883,6 +943,7 @@ function zoom(d) {
     document.querySelectorAll('.results-grid').forEach(g =>
       g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`);
   }
+  applyZoomStyles();
 }
 
 function toggleFull() {
@@ -923,7 +984,7 @@ function loadAdmin() {
 
 function initAdminGroups() {
   ST.adminGroups = Array.from({ length: ST.adminGC }, (_, i) => ({
-    name: (i + 1) + '모둠', members: []
+    name: ST.groupNames[i] && ST.groupNames[i].trim() ? ST.groupNames[i].trim() : (i + 1) + '모둠', members: []
   }));
 }
 
@@ -958,6 +1019,34 @@ function renderAdmin() {
           : `<span class="admin-empty">${i === ST.adminSelGroup ? '← 왼쪽에서 학생을 클릭해 배정' : '클릭하여 선택'}</span>`}
       </div>
     </div>`).join('');
+}
+
+function checkGenderSeparable() {
+  for (const g of ST.adminGroups) {
+    if (!g.members.length) continue;
+    const genders = g.members.map(m => {
+      const s = ST.students.find(st => st.name === m);
+      return s ? s.gender : null;
+    }).filter(Boolean);
+    if (genders.includes('M') && genders.includes('F')) return false;
+  }
+  return true;
+}
+
+function updateGenderIndicator() {
+  const el = document.getElementById('gender-sep-indicator');
+  if (!el) return;
+  const anyAssigned = ST.adminGroups.some(g => g.members.length > 0);
+  if (!anyAssigned) {
+    el.className = 'gsep-box gsep-info';
+    el.textContent = '⚪ 학생 배정 후 구분 가능 여부를 확인합니다';
+    return;
+  }
+  const ok = checkGenderSeparable();
+  el.className = 'gsep-box ' + (ok ? 'gsep-ok' : 'gsep-no');
+  el.textContent = ok
+    ? '✅ 남/녀 구분 가능 — 모든 모둠이 단일 성별입니다'
+    : '⚠️ 남/녀 구분 불가능 — 남녀 혼성 모둠이 존재합니다';
 }
 
 function adminSelectGroup(i) { ST.adminSelGroup = i; renderAdmin(); }
