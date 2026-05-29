@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>랜덤 모둠 추첨</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & ROOT ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#07071a;--surface:#0f0f2e;--card:#14143a;
+  --gold:#f0c040;--gold2:#ffd86e;
+  --blue:#5ab4ff;--pink:#ff75b0;--green:#4ade80;--red:#f87171;
+  --text:#eeeeff;--muted:#6a6a9a;--border:#2a2a5a;
+}
+html,body{height:100%;overflow:hidden;}
+body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse at 15% 15%,#1a0a3a 0%,transparent 55%),
+    radial-gradient(ellipse at 85% 85%,#0a1a3a 0%,transparent 55%);
+}
+
+/* ── PAGE SYSTEM ── */
+.page{
+  display:none;position:fixed;inset:0;z-index:1;
+  flex-direction:column;align-items:center;
+  overflow-y:auto;overflow-x:hidden;
+  padding:0 1rem 3rem;
+}
+.page.active{display:flex;animation:pgIn .35s ease both;}
+@keyframes pgIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+
+/* ── TYPOGRAPHY ── */
+.big-title{
+  font-family:'Black Han Sans',sans-serif;
+  font-size:clamp(2rem,7vw,3.5rem);
+  background:linear-gradient(135deg,var(--gold),var(--gold2),var(--gold));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  text-align:center;filter:drop-shadow(0 0 22px rgba(240,192,64,.45));
+  letter-spacing:-1px;line-height:1.1;user-select:none;
+}
+.section-label{font-size:.75rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+
+/* ── PANELS ── */
+.panel{
+  width:100%;max-width:580px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;padding:1.4rem;
+  box-shadow:0 6px 36px rgba(0,0,60,.45);margin-bottom:.9rem;
+}
+.panel-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:1rem;padding-bottom:.7rem;border-bottom:1px solid var(--border);
+}
+.panel-header-text{font-size:.78rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
+  border:none;border-radius:12px;cursor:pointer;
+  font-family:inherit;font-weight:700;transition:all .18s;
+  font-size:.92rem;padding:.72rem 1.4rem;
+}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#e0a000);color:#0a0800;box-shadow:0 3px 16px rgba(240,192,64,.35);}
+.btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(240,192,64,.55);}
+.btn-green{background:linear-gradient(135deg,var(--green),#16a34a);color:#001a08;}
+.btn-red{background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:var(--red);}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted);}
+.btn-outline:hover{border-color:var(--text);color:var(--text);}
+.btn-full{width:100%;max-width:580px;padding:1rem;font-size:1rem;}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;}
+
+/* ── TOGGLE SWITCH ── */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.toggle-label{font-size:.95rem;font-weight:600;}
+.sw{position:relative;width:52px;height:28px;flex-shrink:0;}
+.sw input{opacity:0;width:0;height:0;}
+.sw-track{position:absolute;inset:0;border-radius:28px;background:var(--border);cursor:pointer;transition:.25s;}
+.sw-track::before{content:'';position:absolute;height:20px;width:20px;left:4px;bottom:4px;background:var(--muted);border-radius:50%;transition:.25s;}
+.sw input:checked+.sw-track{background:var(--gold);}
+.sw input:checked+.sw-track::before{transform:translateX(24px);background:#fff;}
+
+/* ── BADGE ── */
+.badge{background:rgba(255,255,255,.07);border:1px solid var(--border);border-radius:999px;padding:.15rem .65rem;font-size:.75rem;color:var(--muted);}
+
+/* ── STEP BTN ── */
+.step-btn{width:42px;height:42px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--text);font-size:1.3rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.18s;}
+.step-btn:hover{background:var(--gold);color:#000;border-color:var(--gold);}
+
+/* ════════════════════════════════
+   PAGE: LOADING
+════════════════════════════════ */
+#pg-loading{justify-content:center;gap:1.5rem;padding-top:0;}
+.loading-ring{width:72px;height:72px;border-radius:50%;border:4px solid var(--border);border-top-color:var(--gold);animation:spin .9s linear infinite;}
+.loading-text{color:var(--muted);letter-spacing:3px;animation:blink 1.2s step-end infinite;font-size:.9rem;}
+
+/* ════════════════════════════════
+   PAGE 1: STUDENTS
+════════════════════════════════ */
+#pg-p1{padding-top:1.6rem;}
+.p1-header{width:100%;max-width:580px;text-align:center;margin-bottom:1.4rem;}
+
+/* 제목 누름 진행 바 */
+.press-track{height:3px;background:var(--border);border-radius:2px;margin-top:.55rem;overflow:hidden;}
+.press-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;}
+
+/* 학생 행 */
+.student-row{display:flex;align-items:center;gap:.55rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04);}
+.student-row:last-child{border-bottom:none;}
+.s-gender{font-size:.7rem;font-weight:700;padding:.12rem .45rem;border-radius:4px;flex-shrink:0;}
+.s-gender.M{background:rgba(90,180,255,.15);color:var(--blue);}
+.s-gender.F{background:rgba(255,117,176,.15);color:var(--pink);}
+.s-name{flex:1;font-size:.93rem;}
+.btn-del{width:26px;height:26px;border-radius:6px;background:rgba(248,113,113,.12);border:none;color:var(--red);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0;}
+.btn-del:hover{background:rgba(248,113,113,.3);}
+.empty-hint{color:var(--muted);font-size:.88rem;text-align:center;padding:1.5rem 0;}
+
+/* 추가 폼 */
+.add-form{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;}
+.add-form input[type=text]{
+  flex:1;min-width:110px;
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:.65rem .9rem;color:var(--text);font-family:inherit;font-size:.9rem;outline:none;
+}
+.add-form input:focus{border-color:var(--gold);}
+.gender-pills{display:flex;gap:.3rem;}
+.gpill input{display:none;}
+.gpill label{padding:.48rem .75rem;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:700;border:1px solid var(--border);color:var(--muted);transition:.18s;user-select:none;}
+.gpill.M input:checked+label{background:rgba(90,180,255,.2);border-color:var(--blue);color:var(--blue);}
+.gpill.F input:checked+label{background:rgba(255,117,176,.2);border-color:var(--pink);color:var(--pink);}
+
+/* 하단 nav */
+.page-footer{width:100%;max-width:580px;display:flex;gap:.7rem;margin-top:.5rem;padding-top:1rem;}
+
+/* ════════════════════════════════
+   PAGE 2: GROUP COUNT
+════════════════════════════════ */
+#pg-p2{justify-content:center;gap:0;padding-top:2rem;}
+.p2-inner{width:100%;max-width:480px;display:flex;flex-direction:column;align-items:center;gap:1.5rem;}
+.stepper-big{display:flex;align-items:center;gap:1.8rem;}
+.num-big{font-family:'Black Han Sans',sans-serif;font-size:5rem;color:var(--gold);line-height:1;min-width:4rem;text-align:center;filter:drop-shadow(0 0 20px rgba(240,192,64,.5));}
+.step-btn-big{width:56px;height:56px;border-radius:14px;font-size:1.8rem;}
+.avg-box{
+  width:100%;background:var(--surface);border:1px solid var(--border);
+  border-radius:18px;padding:1.4rem 1.6rem;text-align:center;
+}
+.avg-main-num{font-family:'Black Han Sans',sans-serif;font-size:2.8rem;color:var(--gold2);line-height:1;}
+.avg-label{color:var(--muted);font-size:.85rem;margin-top:.3rem;}
+.avg-chips{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap;margin-top:1rem;}
+.avg-chip{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:.4rem .9rem;font-size:.82rem;}
+
+/* ════════════════════════════════
+   PAGE 3: SUSPENSE
+════════════════════════════════ */
+#pg-p3{justify-content:center;align-items:center;gap:3rem;padding-top:0;}
+.mystery-wrap{position:relative;display:flex;align-items:center;justify-content:center;}
+.mystery-box{
+  width:clamp(220px,55vw,300px);height:clamp(220px,55vw,300px);
+  border-radius:36px;background:var(--card);border:3px solid var(--gold);
+  display:flex;align-items:center;justify-content:center;position:relative;
+}
+.mystery-q{
+  font-family:'Black Han Sans',sans-serif;font-size:clamp(5rem,18vw,9rem);
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  animation:qpulse 2s ease-in-out infinite;user-select:none;
+}
+@keyframes qpulse{0%,100%{filter:drop-shadow(0 0 18px rgba(240,192,64,.4));transform:scale(1);}50%{filter:drop-shadow(0 0 36px rgba(240,192,64,.85));transform:scale(1.07);}}
+.mystery-box.shaking{animation:shake .07s infinite;}
+.mystery-box.exploding{animation:explode .48s ease-out forwards;}
+@keyframes shake{0%{transform:translate(-3px,-1px) rotate(-.6deg);}25%{transform:translate(3px,-1px) rotate(.6deg);}50%{transform:translate(-3px,1px) rotate(-.6deg);}75%{transform:translate(3px,1px) rotate(.6deg);}100%{transform:translate(-3px,-1px) rotate(-.6deg);}}
+@keyframes explode{0%{transform:scale(1);opacity:1;filter:brightness(1);}55%{transform:scale(1.18);opacity:1;filter:brightness(7) blur(2px);}100%{transform:scale(.7);opacity:0;filter:brightness(7) blur(10px);}}
+.draw-big-btn{
+  background:linear-gradient(135deg,var(--gold),#e09000);color:#060400;
+  border:none;border-radius:999px;padding:1.2rem 4.5rem;
+  font-family:'Black Han Sans',sans-serif;font-size:2rem;letter-spacing:2px;cursor:pointer;
+  box-shadow:0 6px 40px rgba(240,192,64,.5),0 0 80px rgba(240,192,64,.2);
+  transition:all .2s;animation:pulsebtn 2s ease-in-out infinite;
+}
+.draw-big-btn:hover{transform:scale(1.04);}
+.draw-big-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;animation:none;box-shadow:none;}
+@keyframes pulsebtn{0%,100%{box-shadow:0 6px 40px rgba(240,192,64,.5),0 0 80px rgba(240,192,64,.2);}50%{box-shadow:0 8px 55px rgba(240,192,64,.8),0 0 110px rgba(240,192,64,.4);}}
+
+/* ════════════════════════════════
+   PAGE 4: RESULTS
+════════════════════════════════ */
+#pg-p4{padding-top:0;padding-bottom:2rem;}
+.p4-topbar{
+  width:100%;position:sticky;top:0;z-index:20;
+  background:rgba(7,7,26,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  padding:.7rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;
+  margin-bottom:1.2rem;
+}
+.btn-icon{padding:.55rem 1rem;font-size:.82rem;border-radius:9px;}
+.results-content{width:100%;max-width:1100px;}
+.res-section{margin-bottom:2.2rem;}
+.res-section-title{
+  font-family:'Black Han Sans',sans-serif;font-size:1.2rem;letter-spacing:1px;
+  margin-bottom:1.1rem;display:flex;align-items:center;gap:.5rem;
+}
+.res-section-title.male{color:var(--blue);}
+.res-section-title.female{color:var(--pink);}
+.res-section-title.mixed{color:var(--gold);}
+.results-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;transition:grid-template-columns .2s;}
+.result-card{
+  background:var(--card);border:1px solid var(--border);border-radius:18px;padding:1.3rem;
+  opacity:0;transform:translateY(22px) scale(.92);transition:opacity .4s,transform .4s;
+}
+.result-card.show{opacity:1;transform:none;}
+.result-card.c-male{border-color:rgba(90,180,255,.3);box-shadow:0 4px 20px rgba(90,180,255,.07);}
+.result-card.c-female{border-color:rgba(255,117,176,.3);box-shadow:0 4px 20px rgba(255,117,176,.07);}
+.result-card.c-mixed{border-color:rgba(240,192,64,.25);box-shadow:0 4px 20px rgba(240,192,64,.07);}
+.card-head{
+  font-family:'Black Han Sans',sans-serif;font-size:1.05rem;
+  margin-bottom:.85rem;padding-bottom:.65rem;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.card-head.male{color:var(--blue);}
+.card-head.female{color:var(--pink);}
+.card-head.mixed{color:var(--gold);}
+.card-n{opacity:.5;font-size:.72rem;font-weight:400;font-family:'Noto Sans KR',sans-serif;}
+.member-chip{
+  display:inline-block;background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.1);border-radius:8px;
+  padding:.28rem .65rem;font-size:.88rem;font-weight:500;
+  margin:.2rem .18rem 0 0;
+}
+
+/* ════════════════════════════════
+   ADMIN PAGE
+════════════════════════════════ */
+#pg-admin{padding-top:1.5rem;align-items:center;}
+.admin-header{width:100%;max-width:880px;text-align:center;margin-bottom:1.2rem;}
+.admin-badge{display:inline-block;background:rgba(248,113,113,.13);border:1px solid rgba(248,113,113,.3);border-radius:999px;padding:.28rem 1rem;font-size:.75rem;color:var(--red);letter-spacing:2px;text-transform:uppercase;margin-bottom:.6rem;}
+.admin-row{width:100%;max-width:880px;display:flex;align-items:center;gap:.8rem;margin-bottom:.9rem;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:.9rem 1.2rem;flex-wrap:wrap;}
+.admin-layout{display:grid;grid-template-columns:1fr 2fr;gap:1rem;width:100%;max-width:880px;}
+@media(max-width:600px){.admin-layout{grid-template-columns:1fr;}}
+
+/* pool */
+.pool-panel{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:1.2rem;}
+.pool-chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.8rem;min-height:40px;}
+.pool-chip{
+  padding:.3rem .75rem;border-radius:8px;font-size:.86rem;cursor:pointer;
+  border:1px solid var(--border);background:var(--card);transition:.15s;
+}
+.pool-chip:hover{border-color:var(--gold);color:var(--gold);}
+.pool-chip.M{border-left:3px solid var(--blue);}
+.pool-chip.F{border-left:3px solid var(--pink);}
+.pool-chip.used{opacity:.25;pointer-events:none;}
+
+/* admin groups */
+.admin-groups{display:flex;flex-direction:column;gap:.7rem;}
+.admin-gcard{
+  background:var(--surface);border:2px solid var(--border);
+  border-radius:16px;padding:1rem 1.2rem;cursor:pointer;transition:.18s;
+}
+.admin-gcard.sel{border-color:var(--gold);background:rgba(240,192,64,.04);}
+.admin-gcard:hover:not(.sel){border-color:var(--muted);}
+.admin-gname{font-family:'Black Han Sans',sans-serif;font-size:1rem;color:var(--gold);margin-bottom:.6rem;display:flex;align-items:center;justify-content:space-between;}
+.admin-gname .gcnt{font-family:'Noto Sans KR',sans-serif;font-size:.75rem;color:var(--muted);font-weight:400;}
+.admin-members{display:flex;flex-wrap:wrap;gap:.3rem;min-height:28px;}
+.admin-mchip{padding:.22rem .6rem;border-radius:7px;font-size:.82rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:.15s;}
+.admin-mchip:hover{background:rgba(248,113,113,.2);border-color:var(--red);color:var(--red);}
+.admin-empty{color:var(--muted);font-size:.82rem;font-style:italic;align-self:center;}
+.admin-footer{width:100%;max-width:880px;display:flex;gap:.7rem;padding:1rem 0 2rem;}
+
+/* ── SHARED ANIMATIONS ── */
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes blink{50%{opacity:.3;}}
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="pg-loading" class="page active">
+  <div class="loading-ring"></div>
+  <div class="big-title" style="margin-top:1rem;">랜덤 모둠 추첨</div>
+  <div class="loading-text" style="margin-top:.8rem;">불러오는 중 . . .</div>
+</div>
+
+<!-- ══ PAGE 1: 학생 입력 ══ -->
+<div id="pg-p1" class="page">
+  <div class="p1-header">
+    <div class="big-title" id="main-title">랜덤 모둠 추첨</div>
+    <div class="press-track"><div class="press-fill" id="press-fill"></div></div>
+  </div>
+
+  <!-- 남녀 구분 토글 -->
+  <div class="panel">
+    <div class="toggle-row">
+      <span class="toggle-label">👫 남녀 구분 추첨</span>
+      <label class="sw">
+        <input type="checkbox" id="tog-sep" onchange="ST.separateGender=this.checked">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- 학생 명단 -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-header-text">학생 명단</span>
+      <span class="badge" id="stu-cnt-badge">0명</span>
+    </div>
+    <div id="student-list"><div class="empty-hint">아래에서 학생을 추가하세요</div></div>
+  </div>
+
+  <!-- 학생 추가 -->
+  <div class="panel">
+    <div class="panel-header"><span class="panel-header-text">학생 추가</span></div>
+    <div class="add-form">
+      <input type="text" id="new-name" placeholder="이름 입력" onkeydown="if(event.key==='Enter')addStudent()">
+      <div class="gender-pills">
+        <div class="gpill M"><input type="radio" name="ng" id="ng-m" value="M" checked><label for="ng-m">남</label></div>
+        <div class="gpill F"><input type="radio" name="ng" id="ng-f" value="F"><label for="ng-f">여</label></div>
+      </div>
+      <button class="btn btn-gold" onclick="addStudent()">+ 추가</button>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <button class="btn btn-outline" style="flex:1" onclick="clearAllStudents()">전체 삭제</button>
+    <button class="btn btn-gold" style="flex:2" onclick="goP2()">다음 단계 →</button>
+  </div>
+</div>
+
+<!-- ══ PAGE 2: 모둠 수 ══ -->
+<div id="pg-p2" class="page">
+  <div class="p2-inner" style="padding-top:2.5rem;">
+    <div style="text-align:center;">
+      <div class="section-label" style="margin-bottom:.4rem;">STEP 2 / 3</div>
+      <div style="font-family:'Black Han Sans',sans-serif;font-size:clamp(1.4rem,4vw,2rem);margin-bottom:1.8rem;">모둠 수를 설정하세요</div>
+    </div>
+    <div class="stepper-big">
+      <button class="step-btn step-btn-big" onclick="adjustGroups(-1)">−</button>
+      <div class="num-big" id="gc-display">4</div>
+      <button class="step-btn step-btn-big" onclick="adjustGroups(1)">+</button>
+    </div>
+    <div class="avg-box" id="avg-box">
+      <div class="avg-main-num" id="avg-num">—</div>
+      <div class="avg-label">모둠당 평균 인원</div>
+      <div class="avg-chips" id="avg-chips"></div>
+    </div>
+    <div style="display:flex;gap:.7rem;width:100%;margin-top:.5rem;">
+      <button class="btn btn-outline" style="flex:1" onclick="showPage('p1')">← 이전</button>
+      <button class="btn btn-gold" style="flex:2" onclick="showPage('p3')">추첨 준비 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE 3: SUSPENSE ══ -->
+<div id="pg-p3" class="page">
+  <div class="mystery-wrap">
+    <div class="mystery-box" id="mystery-box">
+      <span class="mystery-q">?</span>
+    </div>
+  </div>
+  <button class="draw-big-btn" id="draw-btn" onclick="startDraw()">🎲 추첨 시작</button>
+</div>
+
+<!-- ══ PAGE 4: 결과 ══ -->
+<div id="pg-p4" class="page">
+  <div class="p4-topbar">
+    <button class="btn btn-outline btn-icon" onclick="zoom(-1)">🔍−</button>
+    <button class="btn btn-outline btn-icon" onclick="zoom(1)">🔍+</button>
+    <button class="btn btn-outline btn-icon" onclick="toggleFull()" id="full-btn">📋 전체보기</button>
+    <button class="btn btn-gold btn-icon" onclick="redraw()">🔄 재추첨</button>
+    <button class="btn btn-outline btn-icon" onclick="showPage('p1')">🏠 처음으로</button>
+  </div>
+  <div class="results-content" id="results-content"></div>
+</div>
+
+<!-- ══ ADMIN ══ -->
+<div id="pg-admin" class="page">
+  <div class="admin-header">
+    <div class="admin-badge">🔒 관리자 전용</div>
+    <div class="big-title" style="font-size:1.8rem;">조작 결과 설정</div>
+    <div style="color:var(--muted);font-size:.82rem;margin-top:.4rem;">두 번째 추첨 시 아래 설정이 자동 적용됩니다</div>
+  </div>
+
+  <!-- 조작 활성화 -->
+  <div class="admin-row">
+    <span style="font-weight:600;">조작 결과 활성화</span>
+    <label class="sw" style="margin-left:auto;">
+      <input type="checkbox" id="preset-tog">
+      <span class="sw-track"></span>
+    </label>
+    <span style="font-size:.82rem;color:var(--muted);" id="preset-status">비활성화됨</span>
+  </div>
+
+  <!-- 모둠 수 -->
+  <div class="admin-row">
+    <span style="font-weight:600;margin-right:.5rem;">모둠 수</span>
+    <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustAdminGC(-1)">−</button>
+    <span style="font-family:'Black Han Sans',sans-serif;font-size:1.6rem;color:var(--gold);min-width:2.2rem;text-align:center;" id="admin-gc">4</span>
+    <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustAdminGC(1)">+</button>
+    <span class="badge" style="margin-left:auto;" id="unassigned-cnt">미배정 0명</span>
+  </div>
+
+  <!-- 배정 레이아웃 -->
+  <div class="admin-layout">
+    <div class="pool-panel">
+      <div class="section-label">미배정 학생</div>
+      <div class="pool-chips" id="pool-chips"></div>
+    </div>
+    <div class="admin-groups" id="admin-groups"></div>
+  </div>
+
+  <div class="admin-footer">
+    <button class="btn btn-outline" style="flex:1" onclick="showPage('p1')">← 돌아가기</button>
+    <button class="btn btn-red" style="flex:1" onclick="adminReset()">초기화</button>
+    <button class="btn btn-green" style="flex:2" onclick="adminSave()">💾 저장</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════
+//  🔧 Firebase 설정
+//  아래 항목을 본인 Firebase 프로젝트 정보로 교체하세요
+// ═══════════════════════════════════
+const FB_CONFIG = {
+  apiKey:            "AIzaSyBwMBYwfUNWvwYmWMkhdosLHZBQyRBAQZE",
+  authDomain:        "dogae-6ddb4.firebaseapp.com",
+  projectId:         "dogae-6ddb4",
+  storageBucket:     "dogae-6ddb4.firebasestorage.app",
+  messagingSenderId: "1024598178092",
+  appId:             "1:1024598178092:web:642c328d83880fe0e0d489"
+};
+// ═══════════════════════════════════
+
+firebase.initializeApp(FB_CONFIG);
+const db   = firebase.firestore();
+const FDOC = db.collection('modum').doc('config');
+
+// ── 전역 상태 ──
+const ST = {
+  students:       [],      // [{name, gender:'M'|'F'}]
+  separateGender: true,
+  groupCount:     4,
+  drawCount:      0,       // 세션 내 추첨 횟수 (새로고침 시 0으로 초기화)
+  preset:         null,    // [{name, members:[]}]
+  presetEnabled:  false,
+  adminGC:        4,
+  adminSelGroup:  0,
+  adminGroups:    [],
+  zoom:           2,       // 0~4
+  fullView:       false,
+  glowRAF:        null,
+  glowHue:        0,
+  glowSpeed:      1,
+};
+const ZOOM_W = ['120px','158px','200px','248px','310px'];
+
+// ── 페이지 전환 ──
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('pg-' + id).classList.add('active');
+  if (id === 'p3') { resetMysteryBox(); startGlow(); }
+  else stopGlow();
+  if (id === 'admin') loadAdmin();
+}
+
+// ══════════════════════
+//  Firebase 초기 로드
+// ══════════════════════
+async function init() {
+  showPage('loading');
+  try {
+    const snap = await FDOC.get();
+    if (snap.exists) {
+      const d = snap.data();
+      ST.students       = d.students       || [];
+      ST.separateGender = d.separateGender !== false;
+      ST.preset         = d.preset         || null;
+      ST.presetEnabled  = d.presetEnabled  || false;
+    }
+  } catch(e) { console.warn('Firebase 로드 실패:', e.message); }
+  renderP1();
+  showPage('p1');
+}
+
+async function saveDB() {
+  try {
+    await FDOC.set({
+      students:       ST.students,
+      separateGender: ST.separateGender,
+      preset:         ST.preset,
+      presetEnabled:  ST.presetEnabled,
+    }, { merge: true });
+  } catch(e) { console.warn('저장 실패:', e.message); }
+}
+
+// ══════════════════════
+//  PAGE 1 — 학생 입력
+// ══════════════════════
+function renderP1() {
+  document.getElementById('tog-sep').checked = ST.separateGender;
+  document.getElementById('stu-cnt-badge').textContent = ST.students.length + '명';
+  const list = document.getElementById('student-list');
+  if (!ST.students.length) {
+    list.innerHTML = '<div class="empty-hint">아래에서 학생을 추가하세요</div>';
+    return;
+  }
+  list.innerHTML = ST.students.map((s, i) => `
+    <div class="student-row">
+      <span class="s-gender ${s.gender}">${s.gender === 'M' ? '남' : '여'}</span>
+      <span class="s-name">${s.name}</span>
+      <button class="btn-del" onclick="delStudent(${i})">✕</button>
+    </div>`).join('');
+}
+
+function addStudent() {
+  const el = document.getElementById('new-name');
+  const name = el.value.trim();
+  if (!name) { el.focus(); return; }
+  const gender = document.querySelector('input[name="ng"]:checked').value;
+  ST.students.push({ name, gender });
+  el.value = ''; el.focus();
+  renderP1();
+}
+
+function delStudent(i) {
+  ST.students.splice(i, 1);
+  renderP1();
+}
+
+function clearAllStudents() {
+  if (!ST.students.length || !confirm('전체 삭제하시겠습니까?')) return;
+  ST.students = [];
+  renderP1();
+}
+
+async function goP2() {
+  if (!ST.students.length) { alert('학생을 1명 이상 입력하세요.'); return; }
+  await saveDB();
+  ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount));
+  updateP2();
+  showPage('p2');
+}
+
+// ── 제목 5초 꾹 누르기 → 어드민 ──
+(function() {
+  const el  = document.getElementById('main-title');
+  const bar = document.getElementById('press-fill');
+  let raf, start;
+  function upd() {
+    const p = Math.min((Date.now() - start) / 5000 * 100, 100);
+    bar.style.width = p + '%';
+    if (p >= 100) { bar.style.width = '0%'; showPage('admin'); }
+    else raf = requestAnimationFrame(upd);
+  }
+  el.addEventListener('pointerdown', e => { e.preventDefault(); start = Date.now(); raf = requestAnimationFrame(upd); });
+  const cancel = () => { cancelAnimationFrame(raf); bar.style.width = '0%'; };
+  ['pointerup','pointerleave','pointercancel'].forEach(ev => el.addEventListener(ev, cancel));
+})();
+
+// ══════════════════════
+//  PAGE 2 — 모둠 수
+// ══════════════════════
+function updateP2() {
+  const n     = ST.groupCount;
+  const total = ST.students.length;
+  document.getElementById('gc-display').textContent = n;
+  document.getElementById('avg-num').textContent    = (total / n).toFixed(1) + '명';
+
+  let chips = '';
+  if (ST.separateGender) {
+    const m = ST.students.filter(s => s.gender === 'M').length;
+    const f = ST.students.filter(s => s.gender === 'F').length;
+    chips = `
+      <div class="avg-chip" style="color:var(--blue);">🔵 남 ${m}명 → ${n}모둠 (평균 ${(m/n).toFixed(1)}명)</div>
+      <div class="avg-chip" style="color:var(--pink);">🩷 여 ${f}명 → ${n}모둠 (평균 ${(f/n).toFixed(1)}명)</div>`;
+  } else {
+    chips = `<div class="avg-chip">전체 ${total}명 → ${n}모둠</div>`;
+  }
+  document.getElementById('avg-chips').innerHTML = chips;
+}
+
+function adjustGroups(d) {
+  ST.groupCount = Math.max(2, Math.min(ST.students.length, ST.groupCount + d));
+  updateP2();
+}
+
+// ══════════════════════
+//  PAGE 3 — SUSPENSE
+// ══════════════════════
+function resetMysteryBox() {
+  const b = document.getElementById('mystery-box');
+  b.classList.remove('shaking','exploding');
+  b.style.boxShadow = '';
+  b.style.borderColor = '';
+  document.getElementById('draw-btn').disabled = false;
+  ST.glowSpeed = 1;
+}
+
+function startGlow() {
+  const b = document.getElementById('mystery-box');
+  function frame() {
+    ST.glowHue = (ST.glowHue + 0.9 * ST.glowSpeed) % 360;
+    const h1 = ST.glowHue, h2 = (ST.glowHue + 120) % 360, h3 = (ST.glowHue + 240) % 360;
+    b.style.boxShadow = `0 0 0 3px hsl(${h1},100%,65%),0 0 28px 8px hsl(${h1},100%,52%),0 0 65px 20px hsl(${h2},100%,42%),0 0 110px 38px hsl(${h3},100%,28%)`;
+    b.style.borderColor = `hsl(${h1},100%,70%)`;
+    ST.glowRAF = requestAnimationFrame(frame);
+  }
+  ST.glowRAF = requestAnimationFrame(frame);
+}
+
+function stopGlow() {
+  if (ST.glowRAF) { cancelAnimationFrame(ST.glowRAF); ST.glowRAF = null; }
+  const b = document.getElementById('mystery-box');
+  if (b) { b.style.boxShadow = ''; b.style.borderColor = ''; }
+}
+
+function startDraw() {
+  const b   = document.getElementById('mystery-box');
+  const btn = document.getElementById('draw-btn');
+  btn.disabled = true;
+  ST.glowSpeed = 6;
+  b.classList.add('shaking');
+  setTimeout(() => {
+    b.classList.remove('shaking');
+    b.classList.add('exploding');
+    setTimeout(() => {
+      ST.drawCount++;
+      const result = computeResult();
+      stopGlow();
+      renderResults(result);
+      showPage('p4');
+      setTimeout(() => {
+        document.querySelectorAll('.result-card').forEach((c, i) =>
+          setTimeout(() => c.classList.add('show'), i * 75));
+      }, 120);
+    }, 450);
+  }, 2100);
+}
+
+// ══════════════════════
+//  추첨 로직
+// ══════════════════════
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function splitIntoGroups(names, n, prefix) {
+  const s = shuffle(names);
+  return Array.from({ length: n }, (_, i) => ({
+    name: prefix + (i + 1) + '모둠',
+    members: s.filter((_, idx) => idx % n === i),
+    _type: prefix === '남 ' ? 'male' : prefix === '여 ' ? 'female' : 'mixed'
+  }));
+}
+
+function computeResult() {
+  // 2회차 + 조작 활성화 → 프리셋 반환
+  if (ST.drawCount === 2 && ST.presetEnabled && ST.preset && ST.preset.length) {
+    return ST.preset.map(g => ({ ...g, _type: detectGroupType(g) }));
+  }
+  if (ST.separateGender) {
+    const males   = ST.students.filter(s => s.gender === 'M').map(s => s.name);
+    const females = ST.students.filter(s => s.gender === 'F').map(s => s.name);
+    const n = ST.groupCount;
+    return [...splitIntoGroups(males, n, '남 '), ...splitIntoGroups(females, n, '여 ')];
+  } else {
+    return splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, '');
+  }
+}
+
+function detectGroupType(g) {
+  const genders = g.members.map(m => {
+    const s = ST.students.find(st => st.name === m);
+    return s ? s.gender : null;
+  }).filter(Boolean);
+  if (!genders.length) return 'mixed';
+  if (genders.every(x => x === 'M')) return 'male';
+  if (genders.every(x => x === 'F')) return 'female';
+  return 'mixed';
+}
+
+// ══════════════════════
+//  PAGE 4 — 결과
+// ══════════════════════
+function renderResults(groups) {
+  ST.currentResult = groups;
+  const wrap = document.getElementById('results-content');
+
+  const gridStyle = () => `grid-template-columns:repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`;
+
+  const cardHTML = g => `
+    <div class="result-card c-${g._type || 'mixed'}">
+      <div class="card-head ${g._type || 'mixed'}">${g.name}<span class="card-n">${g.members.length}명</span></div>
+      ${g.members.map(m => `<span class="member-chip">${m}</span>`).join('')}
+    </div>`;
+
+  // 남녀 구분 추첨(랜덤)인 경우 섹션 나눔
+  const hasMale   = groups.some(g => (g._type || '') === 'male');
+  const hasFemale = groups.some(g => (g._type || '') === 'female');
+  const isSplit   = hasMale && hasFemale;
+
+  if (isSplit) {
+    const mG = groups.filter(g => g._type === 'male');
+    const fG = groups.filter(g => g._type === 'female');
+    wrap.innerHTML = `
+      <div class="res-section">
+        <div class="res-section-title male">🔵 남학생</div>
+        <div class="results-grid" style="${gridStyle()}">${mG.map(cardHTML).join('')}</div>
+      </div>
+      <div class="res-section">
+        <div class="res-section-title female">🩷 여학생</div>
+        <div class="results-grid" style="${gridStyle()}">${fG.map(cardHTML).join('')}</div>
+      </div>`;
+  } else {
+    wrap.innerHTML = `
+      <div class="res-section">
+        <div class="results-grid" style="${gridStyle()}">${groups.map(cardHTML).join('')}</div>
+      </div>`;
+  }
+}
+
+function zoom(d) {
+  ST.zoom = Math.max(0, Math.min(4, ST.zoom + d));
+  if (!ST.fullView) {
+    document.querySelectorAll('.results-grid').forEach(g =>
+      g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`);
+  }
+}
+
+function toggleFull() {
+  ST.fullView = !ST.fullView;
+  document.getElementById('full-btn').textContent = ST.fullView ? '🔲 일반보기' : '📋 전체보기';
+  document.querySelectorAll('.results-grid').forEach(g =>
+    g.style.gridTemplateColumns = ST.fullView ? '1fr' : `repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`);
+}
+
+function redraw() {
+  showPage('p3');
+}
+
+// ══════════════════════
+//  ADMIN
+// ══════════════════════
+function loadAdmin() {
+  const tog = document.getElementById('preset-tog');
+  tog.checked = ST.presetEnabled;
+  document.getElementById('preset-status').textContent = ST.presetEnabled ? '✅ 활성화됨' : '비활성화됨';
+  tog.onchange = () => {
+    ST.presetEnabled = tog.checked;
+    document.getElementById('preset-status').textContent = tog.checked ? '✅ 활성화됨' : '비활성화됨';
+  };
+
+  // 기존 프리셋 있으면 불러오기, 없으면 초기화
+  if (ST.preset && ST.preset.length) {
+    ST.adminGroups = ST.preset.map(g => ({ name: g.name, members: [...g.members] }));
+    ST.adminGC = ST.adminGroups.length;
+  } else {
+    ST.adminGC = Math.max(2, Math.min(4, ST.students.length));
+    initAdminGroups();
+  }
+  ST.adminSelGroup = 0;
+  document.getElementById('admin-gc').textContent = ST.adminGC;
+  renderAdmin();
+}
+
+function initAdminGroups() {
+  ST.adminGroups = Array.from({ length: ST.adminGC }, (_, i) => ({
+    name: (i + 1) + '모둠', members: []
+  }));
+}
+
+function adjustAdminGC(d) {
+  const n = Math.max(2, Math.min(ST.students.length, ST.adminGC + d));
+  if (n === ST.adminGC) return;
+  ST.adminGC = n;
+  document.getElementById('admin-gc').textContent = n;
+  while (ST.adminGroups.length < n) ST.adminGroups.push({ name: ST.adminGroups.length + 1 + '모둠', members: [] });
+  while (ST.adminGroups.length > n) ST.adminGroups.pop();
+  if (ST.adminSelGroup >= n) ST.adminSelGroup = n - 1;
+  renderAdmin();
+}
+
+function renderAdmin() {
+  const assigned   = ST.adminGroups.flatMap(g => g.members);
+  const unassigned = ST.students.filter(s => !assigned.includes(s.name));
+  document.getElementById('unassigned-cnt').textContent = '미배정 ' + unassigned.length + '명';
+
+  // pool
+  document.getElementById('pool-chips').innerHTML = unassigned.length
+    ? unassigned.map(s => `<div class="pool-chip ${s.gender}" onclick="adminAssign('${s.name}')">${s.name}</div>`).join('')
+    : '<div class="empty-hint" style="font-size:.8rem;padding:.5rem 0;">모두 배정됨 ✓</div>';
+
+  // group cards
+  document.getElementById('admin-groups').innerHTML = ST.adminGroups.map((g, i) => `
+    <div class="admin-gcard ${i === ST.adminSelGroup ? 'sel' : ''}" onclick="adminSelectGroup(${i})">
+      <div class="admin-gname">${g.name}<span class="gcnt">${g.members.length}명</span></div>
+      <div class="admin-members">
+        ${g.members.length
+          ? g.members.map(m => `<span class="admin-mchip" onclick="event.stopPropagation();adminRemove(${i},'${m}')">${m} ✕</span>`).join('')
+          : `<span class="admin-empty">${i === ST.adminSelGroup ? '← 왼쪽에서 학생을 클릭해 배정' : '클릭하여 선택'}</span>`}
+      </div>
+    </div>`).join('');
+}
+
+function adminSelectGroup(i) { ST.adminSelGroup = i; renderAdmin(); }
+
+function adminAssign(name) {
+  const g = ST.adminGroups[ST.adminSelGroup];
+  if (g && !g.members.includes(name)) { g.members.push(name); renderAdmin(); }
+}
+
+function adminRemove(gi, name) {
+  ST.adminGroups[gi].members = ST.adminGroups[gi].members.filter(m => m !== name);
+  renderAdmin();
+}
+
+async function adminSave() {
+  ST.preset = ST.adminGroups.map(g => ({ name: g.name, members: [...g.members] }));
+  await saveDB();
+  alert('저장 완료! 두 번째 추첨 시 이 결과가 출력됩니다.');
+}
+
+function adminReset() {
+  if (!confirm('배정을 초기화하시겠습니까?')) return;
+  initAdminGroups();
+  renderAdmin();
+}
+
+// ── 시작 ──
+init();
+</script>
+</body>
+</html>
