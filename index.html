@@ -6,6 +6,7 @@
 <title>랜덤 모둠 추첨</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&display=swap" rel="stylesheet">
 <style>
 /* ── RESET & ROOT ── */
@@ -105,9 +106,6 @@ body::before{
 #pg-p1{padding-top:1.6rem;}
 .p1-header{width:100%;max-width:580px;text-align:center;margin-bottom:1.4rem;}
 
-/* 제목 누름 진행 바 */
-.press-track{height:3px;background:var(--border);border-radius:2px;margin-top:.55rem;overflow:hidden;}
-.press-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;}
 
 /* 학생 행 */
 .student-row{display:flex;align-items:center;gap:.55rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04);}
@@ -133,6 +131,22 @@ body::before{
 .gpill label{padding:.48rem .75rem;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:700;border:1px solid var(--border);color:var(--muted);transition:.18s;user-select:none;}
 .gpill.M input:checked+label{background:rgba(90,180,255,.2);border-color:var(--blue);color:var(--blue);}
 .gpill.F input:checked+label{background:rgba(255,117,176,.2);border-color:var(--pink);color:var(--pink);}
+
+/* ── 입력 탭 ── */
+.input-tabs{display:flex;gap:.4rem;margin-bottom:1rem;}
+.itab{flex:1;padding:.5rem .3rem;border-radius:9px;font-size:.8rem;font-weight:700;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--muted);transition:.15s;}
+.itab.active{background:rgba(240,192,64,.15);border-color:var(--gold);color:var(--gold);}
+.paste-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;}
+@media(max-width:480px){.paste-grid{grid-template-columns:1fr;}}
+.paste-lbl{font-size:.78rem;font-weight:700;letter-spacing:1px;margin-bottom:.4rem;}
+.paste-lbl.m{color:var(--blue);}
+.paste-lbl.f{color:var(--pink);}
+.paste-area{width:100%;height:130px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.7rem;color:var(--text);font-family:inherit;font-size:.88rem;outline:none;resize:vertical;line-height:1.7;}
+.paste-area:focus{border-color:var(--gold);}
+.file-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;width:100%;padding:2rem 1rem;border:2px dashed var(--border);border-radius:14px;cursor:pointer;color:var(--muted);font-size:.88rem;transition:.2s;text-align:center;}
+.file-drop:hover{border-color:var(--gold);color:var(--gold);}
+.file-drop input{display:none;}
+.file-hint{font-size:.75rem;color:var(--muted);margin-top:.6rem;line-height:1.6;background:var(--card);border-radius:10px;padding:.7rem .9rem;}
 
 /* 하단 nav */
 .page-footer{width:100%;max-width:580px;display:flex;gap:.7rem;margin-top:.5rem;padding-top:1rem;}
@@ -289,7 +303,6 @@ body::before{
 <div id="pg-p1" class="page">
   <div class="p1-header">
     <div class="big-title" id="main-title">랜덤 모둠 추첨</div>
-    <div class="press-track"><div class="press-fill" id="press-fill"></div></div>
   </div>
 
   <!-- 남녀 구분 토글 -->
@@ -312,16 +325,57 @@ body::before{
     <div id="student-list"><div class="empty-hint">아래에서 학생을 추가하세요</div></div>
   </div>
 
-  <!-- 학생 추가 -->
+  <!-- 학생 추가 (탭) -->
   <div class="panel">
     <div class="panel-header"><span class="panel-header-text">학생 추가</span></div>
-    <div class="add-form">
-      <input type="text" id="new-name" placeholder="이름 입력" onkeydown="if(event.key==='Enter')addStudent()">
-      <div class="gender-pills">
-        <div class="gpill M"><input type="radio" name="ng" id="ng-m" value="M" checked><label for="ng-m">남</label></div>
-        <div class="gpill F"><input type="radio" name="ng" id="ng-f" value="F"><label for="ng-f">여</label></div>
+
+    <div class="input-tabs">
+      <button class="itab active" id="itab-direct" onclick="switchInputTab('direct')">✏️ 직접 입력</button>
+      <button class="itab" id="itab-paste" onclick="switchInputTab('paste')">📋 붙여넣기</button>
+      <button class="itab" id="itab-file" onclick="switchInputTab('file')">📁 파일 업로드</button>
+    </div>
+
+    <!-- 직접 입력 -->
+    <div id="itab-content-direct">
+      <div class="add-form">
+        <input type="text" id="new-name" placeholder="이름 입력" onkeydown="if(event.key==='Enter')addStudent()">
+        <div class="gender-pills">
+          <div class="gpill M"><input type="radio" name="ng" id="ng-m" value="M" checked><label for="ng-m">남</label></div>
+          <div class="gpill F"><input type="radio" name="ng" id="ng-f" value="F"><label for="ng-f">여</label></div>
+        </div>
+        <button class="btn btn-gold" onclick="addStudent()">+ 추가</button>
       </div>
-      <button class="btn btn-gold" onclick="addStudent()">+ 추가</button>
+    </div>
+
+    <!-- 붙여넣기 -->
+    <div id="itab-content-paste" class="hidden">
+      <div class="paste-grid">
+        <div>
+          <div class="paste-lbl m">🔵 남학생 명단</div>
+          <textarea id="paste-male" class="paste-area" placeholder="홍길동&#10;이준혁&#10;박서준&#10;(한 줄에 한 명)"></textarea>
+        </div>
+        <div>
+          <div class="paste-lbl f">🩷 여학생 명단</div>
+          <textarea id="paste-female" class="paste-area" placeholder="김민지&#10;이수진&#10;박지연&#10;(한 줄에 한 명)"></textarea>
+        </div>
+      </div>
+      <button class="btn btn-gold" style="width:100%;margin-top:.8rem;" onclick="applyPaste()">명단 추가하기</button>
+    </div>
+
+    <!-- 파일 업로드 -->
+    <div id="itab-content-file" class="hidden">
+      <label class="file-drop">
+        <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFile(this)">
+        <span style="font-size:2rem;">📁</span>
+        <span>클릭하거나 파일을 여기에 끌어다 놓기</span>
+        <span style="font-size:.78rem;">.csv / .xlsx / .xls 지원</span>
+      </label>
+      <div class="file-hint">
+        📋 <b>파일 형식 안내</b><br>
+        · 열 구성: <b>이름</b> | <b>성별</b> (남/여 또는 M/F)<br>
+        · 성별 열이 없으면 전원 남학생으로 입력됩니다<br>
+        · 첫 번째 행은 헤더(이름, 성별)로 인식합니다
+      </div>
     </div>
   </div>
 
@@ -531,6 +585,77 @@ function delStudent(i) {
   renderP1();
 }
 
+// ── 입력 탭 전환 ──
+function switchInputTab(tab) {
+  ['direct','paste','file'].forEach(t => {
+    document.getElementById('itab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('itab-content-' + t).classList.toggle('hidden', t !== tab);
+  });
+}
+
+// ── 붙여넣기 ──
+function applyPaste() {
+  const mText = document.getElementById('paste-male').value;
+  const fText = document.getElementById('paste-female').value;
+  let added = 0;
+  mText.split('\n').forEach(line => {
+    const name = line.trim();
+    if (name && !ST.students.find(s => s.name === name)) { ST.students.push({ name, gender: 'M' }); added++; }
+  });
+  fText.split('\n').forEach(line => {
+    const name = line.trim();
+    if (name && !ST.students.find(s => s.name === name)) { ST.students.push({ name, gender: 'F' }); added++; }
+  });
+  if (added > 0) {
+    document.getElementById('paste-male').value = '';
+    document.getElementById('paste-female').value = '';
+    renderP1();
+    alert(added + '명이 추가되었습니다.');
+  } else { alert('추가할 학생이 없거나 이미 모두 등록되어 있습니다.'); }
+}
+
+// ── 파일 업로드 ──
+const MALE_TAGS_F   = ['남','남자','m','male','M'];
+const FEMALE_TAGS_F = ['여','여자','f','female','F'];
+
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+  if (ext === 'csv' || ext === 'txt') {
+    reader.onload = e => parseCSVStudents(e.target.result);
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      parseCSVStudents(XLSX.utils.sheet_to_csv(ws));
+    };
+    reader.readAsBinaryString(file);
+  }
+  input.value = '';
+}
+
+function parseCSVStudents(text) {
+  const lines   = text.trim().split('\n').filter(l => l.trim());
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+  const nIdx    = headers.findIndex(h => h.includes('이름') || h.toLowerCase().includes('name'));
+  const gIdx    = headers.findIndex(h => h.includes('성별') || h.toLowerCase().includes('gender'));
+  if (nIdx < 0) { alert("'이름' 열을 찾을 수 없습니다.\n첫 행에 '이름', '성별' 헤더가 있어야 합니다."); return; }
+  let added = 0;
+  lines.slice(1).forEach(line => {
+    const cols   = line.split(',').map(c => c.trim().replace(/"/g,''));
+    const name   = cols[nIdx];
+    if (!name) return;
+    let gender = 'M';
+    if (gIdx >= 0) { if (FEMALE_TAGS_F.includes(cols[gIdx])) gender = 'F'; }
+    if (!ST.students.find(s => s.name === name)) { ST.students.push({ name, gender }); added++; }
+  });
+  renderP1();
+  alert(added > 0 ? added + '명이 추가되었습니다.' : '추가할 학생이 없거나 이미 모두 등록되어 있습니다.');
+}
+
 function clearAllStudents() {
   if (!ST.students.length || !confirm('전체 삭제하시겠습니까?')) return;
   ST.students = [];
@@ -547,17 +672,10 @@ async function goP2() {
 
 // ── 제목 5초 꾹 누르기 → 어드민 ──
 (function() {
-  const el  = document.getElementById('main-title');
-  const bar = document.getElementById('press-fill');
-  let raf, start;
-  function upd() {
-    const p = Math.min((Date.now() - start) / 5000 * 100, 100);
-    bar.style.width = p + '%';
-    if (p >= 100) { bar.style.width = '0%'; showPage('admin'); }
-    else raf = requestAnimationFrame(upd);
-  }
-  el.addEventListener('pointerdown', e => { e.preventDefault(); start = Date.now(); raf = requestAnimationFrame(upd); });
-  const cancel = () => { cancelAnimationFrame(raf); bar.style.width = '0%'; };
+  const el = document.getElementById('main-title');
+  let timer;
+  el.addEventListener('pointerdown', e => { e.preventDefault(); timer = setTimeout(() => showPage('admin'), 5000); });
+  const cancel = () => clearTimeout(timer);
   ['pointerup','pointerleave','pointercancel'].forEach(ev => el.addEventListener(ev, cancel));
 })();
 
