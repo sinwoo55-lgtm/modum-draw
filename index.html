@@ -108,14 +108,42 @@ body::before{
 
 
 /* 학생 행 */
-.student-row{display:flex;align-items:center;gap:.55rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04);}
-.student-row:last-child{border-bottom:none;}
-.s-gender{font-size:.7rem;font-weight:700;padding:.12rem .45rem;border-radius:4px;flex-shrink:0;}
-.s-gender.M{background:rgba(90,180,255,.15);color:var(--blue);}
-.s-gender.F{background:rgba(255,117,176,.15);color:var(--pink);}
-.s-name{flex:1;font-size:.93rem;}
-.btn-del{width:26px;height:26px;border-radius:6px;background:rgba(248,113,113,.12);border:none;color:var(--red);cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center;transition:.15s;flex-shrink:0;}
-.btn-del:hover{background:rgba(248,113,113,.3);}
+/* ── STUDENT CARDS ── */
+.s-gender{font-size:.68rem;font-weight:700;padding:.1rem .38rem;border-radius:4px;flex-shrink:0;}
+.s-gender.M{background:rgba(90,180,255,.18);color:var(--blue);}
+.s-gender.F{background:rgba(255,117,176,.18);color:var(--pink);}
+/* 카드 컨테이너 */
+.student-cards{
+  display:flex;flex-wrap:wrap;gap:.4rem;
+  max-height:min(300px,45vh);overflow-y:auto;
+  padding:.15rem .1rem;
+}
+.student-cards::-webkit-scrollbar{width:4px;}
+.student-cards::-webkit-scrollbar-track{background:transparent;}
+.student-cards::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+/* 개별 카드 */
+.s-card{
+  position:relative;display:inline-flex;align-items:center;
+  border-radius:9px;overflow:hidden;cursor:pointer;
+  background:var(--card);border:1px solid var(--border);
+  transition:border-color .15s;user-select:none;
+}
+.s-card:hover{border-color:rgba(248,113,113,.5);}
+.s-card-inner{
+  display:flex;align-items:center;gap:.32rem;
+  padding:.32rem .6rem;transition:filter .2s;
+  pointer-events:none;
+}
+.s-card:hover .s-card-inner{filter:blur(2.5px);}
+.s-card-name{font-size:.86rem;white-space:nowrap;}
+.s-card-del{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.82rem;font-weight:700;color:var(--red);
+  background:rgba(248,113,113,.1);
+  opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.s-card:hover .s-card-del{opacity:1;}
 .empty-hint{color:var(--muted);font-size:.88rem;text-align:center;padding:1.5rem 0;}
 
 /* 추가 폼 */
@@ -305,6 +333,7 @@ body::before{
   .results-content{max-width:1300px;}
   .p1-panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:100%;max-width:860px;align-items:start;}
   .p1-panels-grid>.panel{max-width:100%;margin-bottom:0;}
+  #p1-panel-list{overflow:hidden;}
 }
 @media(min-width:1200px){
   .panel,.p1-header,.page-footer,.btn-full{max-width:1000px;}
@@ -318,9 +347,10 @@ body::before{
 .group-names-scroll::-webkit-scrollbar{width:4px;}
 .group-names-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .gn-row{display:flex;align-items:center;gap:.65rem;}
-.gn-num{font-family:'Black Han Sans',sans-serif;color:var(--gold);min-width:2rem;text-align:right;font-size:.88rem;flex-shrink:0;}
+.gn-num{font-family:'Black Han Sans',sans-serif;color:var(--gold);min-width:3.8rem;text-align:right;font-size:.82rem;flex-shrink:0;white-space:nowrap;}
 .gn-input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.45rem .75rem;color:var(--text);font-family:inherit;font-size:.88rem;outline:none;}
 .gn-input:focus{border-color:var(--gold);}
+.gn-preview{font-size:.72rem;color:var(--gold);white-space:nowrap;opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;}
 /* ── GENDER SEP INDICATOR ── */
 .gsep-box{width:100%;max-width:880px;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.65rem 1rem;border-radius:10px;font-size:.88rem;font-weight:600;margin-bottom:.7rem;}
 .gsep-ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green);}
@@ -622,12 +652,15 @@ function renderP1() {
     list.innerHTML = '<div class="empty-hint">아래에서 학생을 추가하세요</div>';
     return;
   }
-  list.innerHTML = ST.students.map((s, i) => `
-    <div class="student-row">
-      <span class="s-gender ${s.gender}">${s.gender === 'M' ? '남' : '여'}</span>
-      <span class="s-name">${s.name}</span>
-      <button class="btn-del" onclick="delStudent(${i})">✕</button>
+  const cards = ST.students.map((s, i) => `
+    <div class="s-card" onclick="delStudent(${i})">
+      <div class="s-card-inner">
+        <span class="s-gender ${s.gender}">${s.gender === 'M' ? '남' : '여'}</span>
+        <span class="s-card-name">${s.name}</span>
+      </div>
+      <div class="s-card-del">✕</div>
     </div>`).join('');
+  list.innerHTML = `<div class="student-cards">${cards}</div>`;
 }
 
 function addStudent() {
@@ -749,17 +782,24 @@ function updateGroupNames(n) {
   ST.groupNames = ST.groupNames.slice(0, n);
 }
 
+function updateGNPreview(i, val) {
+  ST.groupNames[i] = val;
+  const el = document.getElementById('gnp-' + i);
+  if (el) el.textContent = val.trim() ? `→ ${i + 1}모둠(${val.trim()})` : '';
+}
+
 function renderGroupNames() {
   const el = document.getElementById('group-names-list');
   if (!el) return;
   const n = ST.groupCount;
   el.innerHTML = Array.from({ length: n }, (_, i) => {
-    const val = ST.groupNames[i] || '';
-    const ph  = (i + 1) + '모둠';
+    const val     = ST.groupNames[i] || '';
+    const preview = val.trim() ? `→ ${i + 1}모둠(${val.trim()})` : '';
     return `<div class="gn-row">
-      <span class="gn-num">${i + 1}</span>
-      <input class="gn-input" type="text" value="${val}" placeholder="${ph}"
-        oninput="ST.groupNames[${i}] = this.value">
+      <span class="gn-num">${i + 1}모둠</span>
+      <input class="gn-input" type="text" value="${val}" placeholder="이름 없으면 기본값"
+        oninput="updateGNPreview(${i}, this.value)">
+      <span class="gn-preview" id="gnp-${i}">${preview}</span>
     </div>`;
   }).join('');
 }
@@ -846,6 +886,12 @@ function startDraw() {
 // ══════════════════════
 //  추첨 로직
 // ══════════════════════
+// 모둠 이름 포맷: 커스텀 이름 있으면 'N모둠(이름)', 없으면 'N모둠'
+function buildGroupName(i) {
+  const cn = ST.groupNames[i] && ST.groupNames[i].trim();
+  return cn ? `${i + 1}모둠(${cn})` : `${i + 1}모둠`;
+}
+
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -858,9 +904,11 @@ function shuffle(arr) {
 function splitIntoGroups(names, n, prefix, customNames) {
   const s = shuffle(names);
   return Array.from({ length: n }, (_, i) => {
-    const cn = customNames && customNames[i] && customNames[i].trim();
+    const cn   = customNames && customNames[i] && customNames[i].trim();
+    // 커스텀 이름 있으면 'N모둠(이름)', 없으면 prefix 포함 기본값
+    const name = cn ? `${i + 1}모둠(${cn})` : `${prefix}${i + 1}모둠`;
     return {
-      name:    cn || (prefix + (i + 1) + '모둠'),
+      name,
       members: s.filter((_, idx) => idx % n === i),
       _type:   prefix === '남 ' ? 'male' : prefix === '여 ' ? 'female' : 'mixed'
     };
@@ -984,7 +1032,7 @@ function loadAdmin() {
 
 function initAdminGroups() {
   ST.adminGroups = Array.from({ length: ST.adminGC }, (_, i) => ({
-    name: ST.groupNames[i] && ST.groupNames[i].trim() ? ST.groupNames[i].trim() : (i + 1) + '모둠', members: []
+    name: buildGroupName(i), members: []
   }));
 }
 
