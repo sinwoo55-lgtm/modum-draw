@@ -769,8 +769,6 @@ async function saveDB() {
 function renderP1() {
   document.getElementById('tog-sep').checked   = ST.separateGender;
   document.getElementById('tog-equal').checked = ST.equalRatio;
-  document.getElementById('eq-min-m').textContent = ST.minMale;
-  document.getElementById('eq-min-f').textContent = ST.minFemale;
   syncEqualRatioRow(ST.separateGender);
   const eqBtn = document.getElementById('eq-setting-btn'); if (eqBtn) eqBtn.style.display = ST.equalRatio ? 'inline-flex' : 'none';
   updateGroupSettingsUI();
@@ -1004,10 +1002,10 @@ function adjustMinGender(g, d) {
   const max   = total > 0 ? Math.ceil(total / Math.max(1, ST.groupCount)) + 1 : 10;
   if (g === 'M') {
     ST.minMale = Math.max(0, Math.min(max, ST.minMale + d));
-    document.getElementById('eq-min-m').textContent = ST.minMale;
+    const elM = document.getElementById('eq-min-m'); if(elM) elM.textContent = ST.minMale;
   } else {
     ST.minFemale = Math.max(0, Math.min(max, ST.minFemale + d));
-    document.getElementById('eq-min-f').textContent = ST.minFemale;
+    const elF = document.getElementById('eq-min-f'); if(elF) elF.textContent = ST.minFemale;
   }
   updateEqPreview();
 }
