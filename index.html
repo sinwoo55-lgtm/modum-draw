@@ -1008,28 +1008,40 @@ function adjustMinGender(g, d) {
 function updateEqPreview() {
   const el = document.getElementById('eq-preview');
   if (!el) return;
-  const n  = ST.groupCount;
-  const M  = ST.students.filter(s => s.gender === 'M').length;
-  const F  = ST.students.filter(s => s.gender === 'F').length;
-  const mM = ST.minMale;
-  const mF = ST.minFemale;
+  const n   = ST.groupCount;
+  const M   = ST.students.filter(s => s.gender === 'M').length;
+  const F   = ST.students.filter(s => s.gender === 'F').length;
+  const tot = M + F;
+  const mM  = ST.minMale;
+  const mF  = ST.minFemale;
+  if (!tot || !n) { el.innerHTML = '학생 명단을 먼저 입력하세요'; return; }
 
-  const grpM = mM > 0 ? Math.min(n, Math.floor(M / mM)) : n;
-  const grpF = mF > 0 ? Math.min(n, Math.floor(F / mF)) : n;
+  // 실제 알고리즘과 동일한 시뮬레이션
+  const activeM = mM > 0 ? Math.min(n, Math.floor(M / mM)) : n;
+  const base    = Math.floor(tot / n);
+  const extra   = tot % n;
+  const targets = Array.from({length: n}, (_, i) => base + (i < extra ? 1 : 0));
 
-  // 모둠별 배정 시뮬레이션
-  const mDist = simulateDist(M, n, mM);
-  const fDist = simulateDist(F, n, mF);
+  // 남학생 배정 수
+  const maleCounts = Array(n).fill(0);
+  for (let i = 0; i < M; i++) { if (activeM > 0) maleCounts[i % activeM]++; }
 
-  const mRange = rangeStr(mDist);
-  const fRange = rangeStr(fDist);
-  const noMale   = mDist.filter(x => x === 0).length;
-  const noFemale = fDist.filter(x => x === 0).length;
+  // 여학생 배정 수 (target - 남학생 수)
+  const femaleCounts = targets.map((t, i) => Math.max(0, t - maleCounts[i]));
 
-  let html = `<b>남학생 ${M}명</b> → ${grpM}개 모둠에 배정 (${mRange}명/모둠)`;
-  if (noMale > 0) html += ` <span class="warn">· ${noMale}개 모둠은 남학생 없음</span>`;
-  html += `<br><b>여학생 ${F}명</b> → ${grpF}개 모둠에 배정 (${fRange}명/모둠)`;
-  if (noFemale > 0) html += ` <span class="warn">· ${noFemale}개 모둠은 여학생 없음</span>`;
+  const totalCounts = targets;  // 결국 target과 같음
+  const noMale   = maleCounts.filter(x => x === 0).length;
+  const noFemale = femaleCounts.filter(x => x === 0).length;
+
+  const mRange = rangeStr(maleCounts);
+  const fRange = rangeStr(femaleCounts.filter((_,i) => maleCounts[i] > 0 || femaleCounts[i] > 0));
+  const tRange = rangeStr(totalCounts);
+
+  let html = `<b>모둠당 총 인원</b>: <b style="color:var(--gold2)">${tRange}명</b>`;
+  html += `<br><b>남학생 ${M}명</b>: ${activeM}개 모둠 배정 (모둠당 ${mRange}명)`;
+  if (noMale > 0) html += ` <span class="warn">· ${noMale}개 모둠 남학생 없음</span>`;
+  html += `<br><b>여학생 ${F}명</b>: 모둠당 ${fRange}명`;
+  if (noFemale > 0) html += ` <span class="warn">· ${noFemale}개 모둠 여학생 없음</span>`;
   el.innerHTML = html;
 }
 
@@ -1139,23 +1151,43 @@ function splitEqualRatio(students, n, customNames) {
   const males   = shuffle(students.filter(s => s.gender === 'M'));
   const females = shuffle(students.filter(s => s.gender === 'F'));
   const mM = ST.minMale, mF = ST.minFemale;
+  const total = students.length;
 
-  // 최소 인원 기준으로 배정 가능 모둠 수 계산
+  // ① 최소 인원 기준: 남/여 배정 가능 모둠 수
   const activeM = mM > 0 ? Math.min(n, Math.floor(males.length / mM)) : n;
-  const activeF = mF > 0 ? Math.min(n, Math.floor(females.length / mF)) : n;
 
+  // ② 전체 균등 배분을 위한 모둠별 목표 인원
+  const base  = Math.floor(total / n);
+  const extra = total % n;  // 앞 extra개 모둠은 base+1명
+
+  // ③ 모둠 생성
   const groups = Array.from({ length: n }, (_, i) => {
     const cn = customNames && customNames[i] && customNames[i].trim();
-    return { name: cn ? `${i+1}모둠(${cn})` : `${i+1}모둠`, members: [], _type: 'mixed' };
+    return {
+      name:    cn ? `${i+1}모둠(${cn})` : `${i+1}모둠`,
+      members: [],
+      target:  base + (i < extra ? 1 : 0),
+      _type:   'mixed'
+    };
   });
-  // 남학생: activeM개 모둠에 라운드로빈
+
+  // ④ 남학생: activeM개 모둠에 라운드로빈 배정
   males.forEach((m, i) => {
     if (activeM > 0) groups[i % activeM].members.push(m.name);
   });
-  // 여학생: activeF개 모둠에 라운드로빈
-  females.forEach((f, i) => {
-    if (activeF > 0) groups[i % activeF].members.push(f.name);
-  });
+
+  // ⑤ 여학생: 각 모둠의 (target - 현재 남학생 수) 만큼 순서대로 채움
+  //    → 모둠별 총 인원이 target에 맞게 균등해짐
+  const femaleQueue = [...females];
+  for (let i = 0; i < n && femaleQueue.length > 0; i++) {
+    const needed = Math.max(0, groups[i].target - groups[i].members.length);
+    for (let j = 0; j < needed && femaleQueue.length > 0; j++) {
+      groups[i].members.push(femaleQueue.shift());
+    }
+  }
+  // 잉여 여학생 처리 (이론상 발생 안 함)
+  while (femaleQueue.length > 0) groups[n-1].members.push(femaleQueue.shift());
+
   return groups;
 }
 
