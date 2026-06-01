@@ -302,11 +302,15 @@ body::before{
 .card-head.mixed{color:var(--gold);}
 .card-n{opacity:.5;font-size:.72rem;font-weight:400;font-family:'Noto Sans KR',sans-serif;}
 .member-chip{
-  display:inline-block;background:rgba(255,255,255,.07);
+  display:inline-flex;align-items:center;gap:.28rem;
+  background:rgba(255,255,255,.07);
   border:1px solid rgba(255,255,255,.1);border-radius:8px;
-  padding:.28rem .65rem;font-size:.88rem;font-weight:500;
+  padding:.28rem .55rem;font-size:.88rem;font-weight:500;
   margin:.2rem .18rem 0 0;
 }
+.m-badge{font-size:.62rem;font-weight:700;padding:.08rem .32rem;border-radius:3px;flex-shrink:0;}
+.m-badge.M{background:rgba(90,180,255,.2);color:var(--blue);}
+.m-badge.F{background:rgba(255,117,176,.2);color:var(--pink);}
 
 /* ════════════════════════════════
    ADMIN PAGE
@@ -1104,11 +1108,19 @@ function renderResults(groups, isPreset = false) {
   const wrap = document.getElementById('results-content');
   const gs   = `grid-template-columns:repeat(auto-fill,minmax(${ZOOM_W[ST.zoom]},1fr))`;
 
+  const genderOf = name => {
+    const s = ST.students.find(st => st.name === name);
+    return s ? s.gender : null;
+  };
   const type = g => ST.separateGender ? (g._type || 'mixed') : 'mixed';
   const cardHTML = g => `
     <div class="result-card c-${type(g)}">
       <div class="card-head ${type(g)}">${g.name}<span class="card-n">${g.members.length}명</span></div>
-      ${g.members.map(m => `<span class="member-chip">${m}</span>`).join('')}
+      ${g.members.map(m => {
+        const gd = genderOf(m);
+        const badge = gd ? `<span class="m-badge ${gd}">${gd === 'M' ? '남' : '여'}</span>` : '';
+        return `<span class="member-chip">${badge}${m}</span>`;
+      }).join('')}
     </div>`;
 
   // 남녀 구분 표시 조건:
