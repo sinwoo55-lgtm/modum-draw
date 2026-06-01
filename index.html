@@ -78,6 +78,8 @@ body::before{
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;}
 
 /* ── TOGGLE SWITCH ── */
+#equal-ratio-row{transition:opacity .2s,max-height .25s ease;overflow:hidden;max-height:60px;}
+#equal-ratio-row.hidden-row{opacity:0;max-height:0;pointer-events:none;}
 .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;}
 .toggle-label{font-size:.95rem;font-weight:600;}
 .sw{position:relative;width:52px;height:28px;flex-shrink:0;}
@@ -432,7 +434,14 @@ body::before{
     <div class="toggle-row">
       <span class="toggle-label">👫 남녀 구분 추첨</span>
       <label class="sw">
-        <input type="checkbox" id="tog-sep" onchange="ST.separateGender=this.checked">
+        <input type="checkbox" id="tog-sep" onchange="onSepChange(this.checked)">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+    <div class="toggle-row" id="equal-ratio-row" style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--border);">
+      <span class="toggle-label" style="font-size:.9rem;">⚖️ 남녀 비율 균등 배분</span>
+      <label class="sw">
+        <input type="checkbox" id="tog-equal" onchange="ST.equalRatio=this.checked">
         <span class="sw-track"></span>
       </label>
     </div>
@@ -649,6 +658,7 @@ const FDOC = db.collection('modum').doc('config');
 const ST = {
   students:       [],      // [{name, gender:'M'|'F'}]
   separateGender: true,
+  equalRatio:      false,
   groupCount:     4,
   drawCount:      0,       // 세션 내 추첨 횟수 (새로고침 시 0으로 초기화)
   preset:         null,    // [{name, members:[]}]
@@ -696,6 +706,7 @@ async function init() {
       const d = snap.data();
       ST.students       = d.students       || [];
       ST.separateGender = d.separateGender !== false;
+      ST.equalRatio     = d.equalRatio     || false;
       ST.preset         = d.preset         || null;
       ST.presetEnabled  = d.presetEnabled  || false;
       ST.groupNames     = d.groupNames     || [];
@@ -714,6 +725,7 @@ async function saveDB() {
     await FDOC.set({
       students:       ST.students,
       separateGender: ST.separateGender,
+      equalRatio:     ST.equalRatio,
       preset:         ST.preset,
       presetEnabled:  ST.presetEnabled,
       groupNames:     ST.groupNames,
@@ -727,7 +739,9 @@ async function saveDB() {
 //  PAGE 1 — 학생 입력
 // ══════════════════════
 function renderP1() {
-  document.getElementById('tog-sep').checked = ST.separateGender;
+  document.getElementById('tog-sep').checked   = ST.separateGender;
+  document.getElementById('tog-equal').checked = ST.equalRatio;
+  syncEqualRatioRow(ST.separateGender);
   updateGroupSettingsUI();
   document.getElementById('stu-cnt-badge').textContent = ST.students.length + '명';
   const list = document.getElementById('student-list');
@@ -920,6 +934,25 @@ function adjustGroups(d) {
   renderGroupNames();
 }
 
+// 남녀 구분 토글 변경 핸들러
+function onSepChange(val) {
+  ST.separateGender = val;
+  syncEqualRatioRow(val);
+}
+
+// 남녀 구분 ON이면 균등 옵션 숨김
+function syncEqualRatioRow(sepOn) {
+  const row = document.getElementById('equal-ratio-row');
+  if (!row) return;
+  if (sepOn) {
+    row.classList.add('hidden-row');
+    ST.equalRatio = false;
+    document.getElementById('tog-equal').checked = false;
+  } else {
+    row.classList.remove('hidden-row');
+  }
+}
+
 function updateGroupSettingsUI() {
   const n   = ST.groupCount;
   const tot = ST.students.length;
@@ -988,6 +1021,21 @@ function startDraw() {
 //  추첨 로직
 // ══════════════════════
 // 모둠 이름 포맷: 커스텀 이름 있으면 'N모둠(이름)', 없으면 'N모둠'
+// 남녀 비율 균등 분배: M/F를 각각 셔플 후 라운드로빈
+function splitEqualRatio(students, n, customNames) {
+  const males   = shuffle(students.filter(s => s.gender === 'M'));
+  const females = shuffle(students.filter(s => s.gender === 'F'));
+  const groups  = Array.from({ length: n }, (_, i) => {
+    const cn = customNames && customNames[i] && customNames[i].trim();
+    return { name: cn ? `${i+1}모둠(${cn})` : `${i+1}모둠`, members: [], _type: 'mixed' };
+  });
+  // 남학생 라운드로빈
+  males.forEach((m, i) => groups[i % n].members.push(m.name));
+  // 여학생 라운드로빈
+  females.forEach((f, i) => groups[i % n].members.push(f.name));
+  return groups;
+}
+
 function buildGroupName(i) {
   const cn = ST.groupNames[i] && ST.groupNames[i].trim();
   return cn ? `${i + 1}모둠(${cn})` : `${i + 1}모둠`;
@@ -1028,6 +1076,9 @@ function computeResult() {
     const females = ST.students.filter(s => s.gender === 'F').map(s => s.name);
     const n = ST.groupCount;
     return { groups: [...splitIntoGroups(males, n, '남 ', ST.groupNames), ...splitIntoGroups(females, n, '여 ', ST.groupNames)], isPreset: false };
+  } else if (ST.equalRatio && ST.students.some(s => s.gender === 'M') && ST.students.some(s => s.gender === 'F')) {
+    // 남녀 비율 균등 분배
+    return { groups: splitEqualRatio(ST.students, ST.groupCount, ST.groupNames), isPreset: false };
   } else {
     return { groups: splitIntoGroups(ST.students.map(s => s.name), ST.groupCount, '', ST.groupNames), isPreset: false };
   }
