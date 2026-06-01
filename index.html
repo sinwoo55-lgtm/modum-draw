@@ -108,7 +108,7 @@ body::before{
 ════════════════════════════════ */
 /* ── P1 LAYOUT: 뷰포트 100% 고정, 내부 스크롤 ── */
 #pg-p1{
-  grid-template-rows:auto auto 1fr auto;
+  grid-template-rows:auto 1fr auto;
   height:100vh;
   overflow:hidden;
   padding:0;
@@ -380,13 +380,10 @@ body::before{
   .mystery-box{width:420px;height:420px;border-radius:48px;}
   .results-content{max-width:1500px;}
 }
+/* ── EQ MODAL BODY ── */
+.eq-modal-body{display:flex;flex-direction:column;gap:.9rem;}
 /* ── EQUAL RATIO SETTINGS ── */
-#equal-settings{
-  margin-top:.65rem;padding:.9rem 1rem;
-  background:var(--card);border:1px solid var(--border);border-radius:12px;
-  display:none;flex-direction:column;gap:.7rem;
-}
-#equal-settings.show{display:flex;}
+/* #equal-settings → eq-modal-body로 이동 */
 .eq-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
 .eq-label{font-size:.82rem;font-weight:600;flex:1;min-width:90px;}
 .eq-label span{font-size:.72rem;color:var(--muted);font-weight:400;display:block;margin-top:.1rem;}
@@ -451,43 +448,6 @@ body::before{
     <div class="big-title" id="main-title">랜덤 모둠 추첨</div>
   </div>
 
-  <!-- 남녀 구분 토글 -->
-  <div class="panel" id="p1-panel-toggle">
-    <div class="toggle-row">
-      <span class="toggle-label">👫 남녀 구분 추첨</span>
-      <label class="sw">
-        <input type="checkbox" id="tog-sep" onchange="onSepChange(this.checked)">
-        <span class="sw-track"></span>
-      </label>
-    </div>
-    <div class="toggle-row" id="equal-ratio-row" style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--border);">
-      <span class="toggle-label" style="font-size:.9rem;">⚖️ 남녀 비율 균등 배분</span>
-      <label class="sw">
-        <input type="checkbox" id="tog-equal" onchange="onEqualChange(this.checked)">
-        <span class="sw-track"></span>
-      </label>
-    </div>
-    <div id="equal-settings">
-      <div class="eq-row">
-        <div class="eq-label">모둠당 최소 남학생<span>0 = 제한 없음</span></div>
-        <div class="eq-stepper">
-          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('M',-1)">−</button>
-          <span class="eq-val" id="eq-min-m">0</span>
-          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('M',1)">+</button>
-        </div>
-      </div>
-      <div class="eq-row">
-        <div class="eq-label">모둠당 최소 여학생<span>0 = 제한 없음</span></div>
-        <div class="eq-stepper">
-          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('F',-1)">−</button>
-          <span class="eq-val" id="eq-min-f">0</span>
-          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('F',1)">+</button>
-        </div>
-      </div>
-      <div class="eq-preview" id="eq-preview">설정 후 배분 예시가 표시됩니다</div>
-    </div>
-  </div>
-
   <div class="p1-body">
   <!-- 학생 명단 -->
   <div class="panel" id="p1-panel-list">
@@ -499,6 +459,27 @@ body::before{
   </div>
 
   <div class="p1-right-col">
+  <!-- 남녀 구분 + 균등 배분 토글 (compact) -->
+  <div class="panel" id="p1-panel-toggle">
+    <div class="toggle-row">
+      <span class="toggle-label">👫 남녀 구분 추첨</span>
+      <label class="sw">
+        <input type="checkbox" id="tog-sep" onchange="onSepChange(this.checked)">
+        <span class="sw-track"></span>
+      </label>
+    </div>
+    <div class="toggle-row" id="equal-ratio-row" style="margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border);">
+      <span class="toggle-label" style="font-size:.88rem;">⚖️ 남녀 비율 균등 배분</span>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-left:auto;">
+        <button class="btn btn-outline" id="eq-setting-btn" onclick="openEqModal()"
+          style="display:none;padding:.28rem .7rem;font-size:.75rem;border-radius:7px;">⚙ 설정</button>
+        <label class="sw">
+          <input type="checkbox" id="tog-equal" onchange="onEqualChange(this.checked)">
+          <span class="sw-track"></span>
+        </label>
+      </div>
+    </div>
+  </div>
   <!-- 학생 추가 (탭) -->
   <div class="panel" id="p1-panel-add">
     <div class="panel-header"><span class="panel-header-text">학생 추가</span></div>
@@ -791,7 +772,7 @@ function renderP1() {
   document.getElementById('eq-min-m').textContent = ST.minMale;
   document.getElementById('eq-min-f').textContent = ST.minFemale;
   syncEqualRatioRow(ST.separateGender);
-  if (ST.equalRatio) { document.getElementById('equal-settings').classList.add('show'); updateEqPreview(); }
+  const eqBtn = document.getElementById('eq-setting-btn'); if (eqBtn) eqBtn.style.display = ST.equalRatio ? 'inline-flex' : 'none';
   updateGroupSettingsUI();
   document.getElementById('stu-cnt-badge').textContent = ST.students.length + '명';
   const list = document.getElementById('student-list');
@@ -987,9 +968,35 @@ function adjustGroups(d) {
 // 남녀 구분 토글 변경 핸들러
 function onEqualChange(val) {
   ST.equalRatio = val;
-  const box = document.getElementById('equal-settings');
-  if (val) { box.classList.add('show'); updateEqPreview(); }
-  else      { box.classList.remove('show'); }
+  const btn = document.getElementById('eq-setting-btn');
+  if (btn) btn.style.display = val ? 'inline-flex' : 'none';
+}
+
+function openEqModal() {
+  updateEqPreview();
+  openModal('⚖️ 균등 배분 세부 설정', `
+    <div class="eq-modal-body">
+      <div class="eq-row">
+        <div class="eq-label">모둠당 최소 남학생<span>0 = 제한 없음</span></div>
+        <div class="eq-stepper">
+          <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustMinGender('M',-1)">−</button>
+          <span class="eq-val" id="eq-min-m" style="font-size:1.6rem;min-width:2.2rem;">${ST.minMale}</span>
+          <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustMinGender('M',1)">+</button>
+        </div>
+      </div>
+      <div class="eq-row">
+        <div class="eq-label">모둠당 최소 여학생<span>0 = 제한 없음</span></div>
+        <div class="eq-stepper">
+          <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustMinGender('F',-1)">−</button>
+          <span class="eq-val" id="eq-min-f" style="font-size:1.6rem;min-width:2.2rem;">${ST.minFemale}</span>
+          <button class="step-btn" style="width:34px;height:34px;font-size:1.1rem;" onclick="adjustMinGender('F',1)">+</button>
+        </div>
+      </div>
+      <div class="eq-preview" id="eq-preview">계산 중...</div>
+      <button class="btn btn-gold" style="width:100%;" onclick="closeModal()">확인</button>
+    </div>
+  `);
+  setTimeout(updateEqPreview, 30);
 }
 
 function adjustMinGender(g, d) {
