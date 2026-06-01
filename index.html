@@ -1182,11 +1182,11 @@ function splitEqualRatio(students, n, customNames) {
   for (let i = 0; i < n && femaleQueue.length > 0; i++) {
     const needed = Math.max(0, groups[i].target - groups[i].members.length);
     for (let j = 0; j < needed && femaleQueue.length > 0; j++) {
-      groups[i].members.push(femaleQueue.shift());
+      groups[i].members.push(femaleQueue.shift().name);
     }
   }
   // 잉여 여학생 처리 (이론상 발생 안 함)
-  while (femaleQueue.length > 0) groups[n-1].members.push(femaleQueue.shift());
+  while (femaleQueue.length > 0) groups[n-1].members.push(femaleQueue.shift().name);
 
   return groups;
 }
