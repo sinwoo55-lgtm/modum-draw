@@ -34,6 +34,7 @@ body::before{
   padding:0 1rem 3rem;
 }
 .page.active{display:flex;animation:pgIn .35s ease both;}
+#pg-p1.active{display:grid;}
 @keyframes pgIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
 
 /* ── TYPOGRAPHY ── */
@@ -105,7 +106,6 @@ body::before{
 ════════════════════════════════ */
 /* ── P1 LAYOUT: 뷰포트 100% 고정, 내부 스크롤 ── */
 #pg-p1{
-  display:grid;
   grid-template-rows:auto auto 1fr auto;
   height:100vh;
   overflow:hidden;
@@ -525,7 +525,7 @@ body::before{
   <div class="page-footer" style="flex-wrap:wrap;gap:.55rem;">
     <button class="btn btn-outline" style="flex:1;min-width:90px" onclick="clearAllStudents()">전체 삭제</button>
     <button class="btn btn-outline" style="flex:1;min-width:140px" onclick="openLoadModal()">📂 설정 불러오기</button>
-    <button class="btn btn-outline" style="flex:1;min-width:110px" onclick="goToP3()">▶ 추첨 시작</button>
+    <button class="btn btn-outline" style="flex:1;min-width:110px" onclick="goToP3()">▶ 저장 없이 추첨 시작</button>
     <button class="btn btn-gold" style="flex:2;min-width:180px" onclick="openSaveModal()">💾 저장 및 추첨 시작</button>
   </div>
 </div>
@@ -1149,6 +1149,7 @@ function adjustAdminGC(d) {
 }
 
 function renderAdmin() {
+  updateGenderIndicator();
   const assigned   = ST.adminGroups.flatMap(g => g.members);
   const unassigned = ST.students.filter(s => !assigned.includes(s.name));
   document.getElementById('unassigned-cnt').textContent = '미배정 ' + unassigned.length + '명';
