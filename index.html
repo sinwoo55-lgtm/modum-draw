@@ -380,6 +380,24 @@ body::before{
   .mystery-box{width:420px;height:420px;border-radius:48px;}
   .results-content{max-width:1500px;}
 }
+/* ── EQUAL RATIO SETTINGS ── */
+#equal-settings{
+  margin-top:.65rem;padding:.9rem 1rem;
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  display:none;flex-direction:column;gap:.7rem;
+}
+#equal-settings.show{display:flex;}
+.eq-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;}
+.eq-label{font-size:.82rem;font-weight:600;flex:1;min-width:90px;}
+.eq-label span{font-size:.72rem;color:var(--muted);font-weight:400;display:block;margin-top:.1rem;}
+.eq-stepper{display:flex;align-items:center;gap:.5rem;}
+.eq-val{font-family:'Black Han Sans',sans-serif;font-size:1.3rem;color:var(--gold);min-width:1.8rem;text-align:center;}
+.eq-preview{
+  font-size:.78rem;color:var(--muted);line-height:1.6;
+  padding:.55rem .7rem;background:rgba(255,255,255,.04);border-radius:8px;
+}
+.eq-preview b{color:var(--text);}
+.eq-preview .warn{color:rgba(251,191,36,.85);}
 /* ── GROUP NAMES ── */
 .group-names-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:.42rem;padding-right:.2rem;}
 .group-names-scroll::-webkit-scrollbar{width:4px;}
@@ -445,9 +463,28 @@ body::before{
     <div class="toggle-row" id="equal-ratio-row" style="margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--border);">
       <span class="toggle-label" style="font-size:.9rem;">⚖️ 남녀 비율 균등 배분</span>
       <label class="sw">
-        <input type="checkbox" id="tog-equal" onchange="ST.equalRatio=this.checked">
+        <input type="checkbox" id="tog-equal" onchange="onEqualChange(this.checked)">
         <span class="sw-track"></span>
       </label>
+    </div>
+    <div id="equal-settings">
+      <div class="eq-row">
+        <div class="eq-label">모둠당 최소 남학생<span>0 = 제한 없음</span></div>
+        <div class="eq-stepper">
+          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('M',-1)">−</button>
+          <span class="eq-val" id="eq-min-m">0</span>
+          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('M',1)">+</button>
+        </div>
+      </div>
+      <div class="eq-row">
+        <div class="eq-label">모둠당 최소 여학생<span>0 = 제한 없음</span></div>
+        <div class="eq-stepper">
+          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('F',-1)">−</button>
+          <span class="eq-val" id="eq-min-f">0</span>
+          <button class="step-btn" style="width:30px;height:30px;font-size:1rem;" onclick="adjustMinGender('F',1)">+</button>
+        </div>
+      </div>
+      <div class="eq-preview" id="eq-preview">설정 후 배분 예시가 표시됩니다</div>
     </div>
   </div>
 
@@ -663,6 +700,8 @@ const ST = {
   students:       [],      // [{name, gender:'M'|'F'}]
   separateGender: true,
   equalRatio:      false,
+  minMale:         0,
+  minFemale:       0,
   groupCount:     4,
   drawCount:      0,       // 세션 내 추첨 횟수 (새로고침 시 0으로 초기화)
   preset:         null,    // [{name, members:[]}]
@@ -711,6 +750,8 @@ async function init() {
       ST.students       = d.students       || [];
       ST.separateGender = d.separateGender !== false;
       ST.equalRatio     = d.equalRatio     || false;
+      ST.minMale        = d.minMale        || 0;
+      ST.minFemale      = d.minFemale      || 0;
       ST.preset         = d.preset         || null;
       ST.presetEnabled  = d.presetEnabled  || false;
       ST.groupNames     = d.groupNames     || [];
@@ -730,6 +771,8 @@ async function saveDB() {
       students:       ST.students,
       separateGender: ST.separateGender,
       equalRatio:     ST.equalRatio,
+      minMale:        ST.minMale,
+      minFemale:      ST.minFemale,
       preset:         ST.preset,
       presetEnabled:  ST.presetEnabled,
       groupNames:     ST.groupNames,
@@ -745,7 +788,10 @@ async function saveDB() {
 function renderP1() {
   document.getElementById('tog-sep').checked   = ST.separateGender;
   document.getElementById('tog-equal').checked = ST.equalRatio;
+  document.getElementById('eq-min-m').textContent = ST.minMale;
+  document.getElementById('eq-min-f').textContent = ST.minFemale;
   syncEqualRatioRow(ST.separateGender);
+  if (ST.equalRatio) { document.getElementById('equal-settings').classList.add('show'); updateEqPreview(); }
   updateGroupSettingsUI();
   document.getElementById('stu-cnt-badge').textContent = ST.students.length + '명';
   const list = document.getElementById('student-list');
@@ -939,6 +985,69 @@ function adjustGroups(d) {
 }
 
 // 남녀 구분 토글 변경 핸들러
+function onEqualChange(val) {
+  ST.equalRatio = val;
+  const box = document.getElementById('equal-settings');
+  if (val) { box.classList.add('show'); updateEqPreview(); }
+  else      { box.classList.remove('show'); }
+}
+
+function adjustMinGender(g, d) {
+  const total = ST.students.filter(s => s.gender === g).length;
+  const max   = total > 0 ? Math.ceil(total / Math.max(1, ST.groupCount)) + 1 : 10;
+  if (g === 'M') {
+    ST.minMale = Math.max(0, Math.min(max, ST.minMale + d));
+    document.getElementById('eq-min-m').textContent = ST.minMale;
+  } else {
+    ST.minFemale = Math.max(0, Math.min(max, ST.minFemale + d));
+    document.getElementById('eq-min-f').textContent = ST.minFemale;
+  }
+  updateEqPreview();
+}
+
+function updateEqPreview() {
+  const el = document.getElementById('eq-preview');
+  if (!el) return;
+  const n  = ST.groupCount;
+  const M  = ST.students.filter(s => s.gender === 'M').length;
+  const F  = ST.students.filter(s => s.gender === 'F').length;
+  const mM = ST.minMale;
+  const mF = ST.minFemale;
+
+  const grpM = mM > 0 ? Math.min(n, Math.floor(M / mM)) : n;
+  const grpF = mF > 0 ? Math.min(n, Math.floor(F / mF)) : n;
+
+  // 모둠별 배정 시뮬레이션
+  const mDist = simulateDist(M, n, mM);
+  const fDist = simulateDist(F, n, mF);
+
+  const mRange = rangeStr(mDist);
+  const fRange = rangeStr(fDist);
+  const noMale   = mDist.filter(x => x === 0).length;
+  const noFemale = fDist.filter(x => x === 0).length;
+
+  let html = `<b>남학생 ${M}명</b> → ${grpM}개 모둠에 배정 (${mRange}명/모둠)`;
+  if (noMale > 0) html += ` <span class="warn">· ${noMale}개 모둠은 남학생 없음</span>`;
+  html += `<br><b>여학생 ${F}명</b> → ${grpF}개 모둠에 배정 (${fRange}명/모둠)`;
+  if (noFemale > 0) html += ` <span class="warn">· ${noFemale}개 모둠은 여학생 없음</span>`;
+  el.innerHTML = html;
+}
+
+function simulateDist(total, n, minCount) {
+  const active = minCount > 0 ? Math.min(n, Math.floor(total / minCount)) : n;
+  if (active === 0) return Array(n).fill(0);
+  const base = Math.floor(total / active);
+  const rem  = total % active;
+  return Array.from({length: n}, (_, i) => i < active ? (i < rem ? base + 1 : base) : 0);
+}
+
+function rangeStr(dist) {
+  const nonZero = dist.filter(x => x > 0);
+  if (!nonZero.length) return '0';
+  const mn = Math.min(...nonZero), mx = Math.max(...nonZero);
+  return mn === mx ? String(mn) : `${mn}~${mx}`;
+}
+
 function onSepChange(val) {
   ST.separateGender = val;
   syncEqualRatioRow(val);
@@ -1029,14 +1138,24 @@ function startDraw() {
 function splitEqualRatio(students, n, customNames) {
   const males   = shuffle(students.filter(s => s.gender === 'M'));
   const females = shuffle(students.filter(s => s.gender === 'F'));
-  const groups  = Array.from({ length: n }, (_, i) => {
+  const mM = ST.minMale, mF = ST.minFemale;
+
+  // 최소 인원 기준으로 배정 가능 모둠 수 계산
+  const activeM = mM > 0 ? Math.min(n, Math.floor(males.length / mM)) : n;
+  const activeF = mF > 0 ? Math.min(n, Math.floor(females.length / mF)) : n;
+
+  const groups = Array.from({ length: n }, (_, i) => {
     const cn = customNames && customNames[i] && customNames[i].trim();
     return { name: cn ? `${i+1}모둠(${cn})` : `${i+1}모둠`, members: [], _type: 'mixed' };
   });
-  // 남학생 라운드로빈
-  males.forEach((m, i) => groups[i % n].members.push(m.name));
-  // 여학생 라운드로빈
-  females.forEach((f, i) => groups[i % n].members.push(f.name));
+  // 남학생: activeM개 모둠에 라운드로빈
+  males.forEach((m, i) => {
+    if (activeM > 0) groups[i % activeM].members.push(m.name);
+  });
+  // 여학생: activeF개 모둠에 라운드로빈
+  females.forEach((f, i) => {
+    if (activeF > 0) groups[i % activeF].members.push(f.name);
+  });
   return groups;
 }
 
