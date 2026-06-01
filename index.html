@@ -374,6 +374,24 @@ body::before{
 .gsep-ok{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green);}
 .gsep-no{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);}
 .gsep-info{background:var(--surface);border:1px solid var(--border);color:var(--muted);}
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.74);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:1rem;}
+.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.6rem;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:82vh;display:flex;flex-direction:column;}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border);flex-shrink:0;}
+.modal-ttl{font-family:'Black Han Sans',sans-serif;font-size:1.1rem;}
+.modal-x{width:30px;height:30px;border-radius:8px;background:var(--card);border:none;color:var(--muted);cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:.15s;}
+.modal-x:hover{background:var(--border);color:var(--text);}
+.modal-bd{overflow-y:auto;flex:1;}
+.modal-input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem 1rem;color:var(--text);font-family:inherit;font-size:.95rem;outline:none;margin-bottom:1rem;}
+.modal-input:focus{border-color:var(--gold);}
+.save-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:.82rem 1rem;margin-bottom:.5rem;cursor:pointer;display:flex;align-items:center;gap:.8rem;transition:border-color .15s;}
+.save-item:hover{border-color:var(--gold);}
+.save-item.del-mode:hover{border-color:var(--red);}
+.save-info{flex:1;min-width:0;}
+.save-name{font-weight:700;font-size:.92rem;margin-bottom:.16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.save-meta{font-size:.75rem;color:var(--muted);}
+.sdel-btn{width:28px;height:28px;border-radius:7px;background:rgba(248,113,113,.12);border:none;color:var(--red);cursor:pointer;font-size:.82rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s;}
+.sdel-btn:hover{background:rgba(248,113,113,.3);}
 </style>
 </head>
 <body>
@@ -486,10 +504,11 @@ body::before{
   </div>
   </div><!-- /p1-right-col -->
   </div><!-- /p1-panels-grid -->
-  <div class="page-footer">
-    <button class="btn btn-outline" style="flex:1" onclick="clearAllStudents()">전체 삭제</button>
-    <button class="btn btn-outline" style="flex:1" id="save-btn" onclick="saveSettings(this)">💾 설정 저장</button>
-    <button class="btn btn-gold" style="flex:2" onclick="goToP3()">추첨 시작 →</button>
+  <div class="page-footer" style="flex-wrap:wrap;gap:.55rem;">
+    <button class="btn btn-outline" style="flex:1;min-width:90px" onclick="clearAllStudents()">전체 삭제</button>
+    <button class="btn btn-outline" style="flex:1;min-width:140px" onclick="openLoadModal()">📂 설정 불러오기</button>
+    <button class="btn btn-outline" style="flex:1;min-width:110px" onclick="goToP3()">▶ 추첨 시작</button>
+    <button class="btn btn-gold" style="flex:2;min-width:180px" onclick="openSaveModal()">💾 저장 및 추첨 시작</button>
   </div>
 </div>
 
@@ -623,6 +642,7 @@ const ST = {
   fullView:       false,
   currentIsPreset: false,
   groupNames:     [],
+  saves:          [],      // 저장된 설정 목록 (최대 10개)
   glowRAF:        null,
   glowHue:        0,
   glowSpeed:      1,
@@ -662,6 +682,7 @@ async function init() {
       ST.presetEnabled  = d.presetEnabled  || false;
       ST.groupNames     = d.groupNames     || [];
       ST.groupCount     = d.groupCount     || 4;
+      ST.saves          = d.saves          || [];
     }
   } catch(e) { console.warn('Firebase 로드 실패:', e.message); }
   updateGroupNames(ST.groupCount);
@@ -679,6 +700,7 @@ async function saveDB() {
       presetEnabled:  ST.presetEnabled,
       groupNames:     ST.groupNames,
       groupCount:     ST.groupCount,
+      saves:          ST.saves,
     }, { merge: true });
   } catch(e) { console.warn('저장 실패:', e.message); }
 }
@@ -1182,8 +1204,151 @@ function adminReset() {
   renderAdmin();
 }
 
+// ════════════════════════════════════════
+//  설정 저장 / 불러오기 모달
+// ════════════════════════════════════════
+function openModal(title, bodyHTML) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML    = bodyHTML;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+// ── 저장 모달 열기 ──
+function openSaveModal() {
+  if (!ST.students.length) { alert('학생을 1명 이상 입력하세요.'); return; }
+  if (ST.saves.length >= 10) {
+    openModal('저장 공간 정리 필요', renderDeleteMode(
+      '최대 10개까지 저장 가능합니다.<br>기존 설정 하나를 삭제해 주세요.'
+    ));
+  } else {
+    showTitleInput();
+  }
+}
+
+function showTitleInput() {
+  openModal('설정 저장 및 추첨 시작', `
+    <div style="font-size:.85rem;color:var(--muted);margin-bottom:.9rem;line-height:1.6;">
+      이 설정의 이름을 입력하면 저장 후 추첨을 시작합니다.
+    </div>
+    <input class="modal-input" id="save-title-input"
+      placeholder="예) 1학년 3반 야영 추첨"
+      onkeydown="if(event.key==='Enter')confirmSave()">
+    <div style="display:flex;gap:.7rem;">
+      <button class="btn btn-outline" style="flex:1" onclick="closeModal()">취소</button>
+      <button class="btn btn-gold" style="flex:2" onclick="confirmSave()">💾 저장 후 추첨 시작</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('save-title-input')?.focus(), 80);
+}
+
+async function confirmSave() {
+  const inp   = document.getElementById('save-title-input');
+  const title = inp ? inp.value.trim() : '';
+  if (!title) { if (inp) { inp.style.borderColor='var(--red)'; inp.placeholder='이름을 입력해주세요'; inp.focus(); } return; }
+  const save = {
+    id:             Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+    title,
+    savedAt:        new Date().toLocaleDateString('ko-KR'),
+    students:       JSON.parse(JSON.stringify(ST.students)),
+    separateGender: ST.separateGender,
+    groupCount:     ST.groupCount,
+    groupNames:     [...ST.groupNames],
+    preset:         ST.preset    ? JSON.parse(JSON.stringify(ST.preset)) : null,
+    presetEnabled:  ST.presetEnabled,
+  };
+  ST.saves.push(save);
+  await saveDB();
+  closeModal();
+  showPage('p3');
+}
+
+// ── 불러오기 모달 열기 ──
+function openLoadModal() {
+  if (!ST.saves.length) {
+    openModal('설정 불러오기', `
+      <div style="text-align:center;color:var(--muted);padding:2rem 0;font-size:.9rem;">
+        저장된 설정이 없습니다.
+      </div>`);
+    return;
+  }
+  openModal('설정 불러오기', renderLoadMode());
+}
+
+function renderLoadMode() {
+  return ST.saves.map(s => `
+    <div class="save-item" onclick="applySave('${s.id}')">
+      <div class="save-info">
+        <div class="save-name">${s.title}</div>
+        <div class="save-meta">학생 ${s.students.length}명 · ${s.groupCount}모둠 · ${s.savedAt}</div>
+      </div>
+      <button class="sdel-btn" title="삭제"
+        onclick="event.stopPropagation();deleteFromLoad('${s.id}')">🗑</button>
+    </div>`).join('');
+}
+
+function renderDeleteMode(msg) {
+  return `<div style="color:var(--muted);font-size:.83rem;margin-bottom:.9rem;line-height:1.7;">${msg}</div>` +
+    ST.saves.map(s => `
+    <div class="save-item del-mode" onclick="deleteFromFull('${s.id}')">
+      <div class="save-info">
+        <div class="save-name">${s.title}</div>
+        <div class="save-meta">학생 ${s.students.length}명 · ${s.groupCount}모둠 · ${s.savedAt}</div>
+      </div>
+      <button class="sdel-btn" onclick="event.stopPropagation();deleteFromFull('${s.id}')">✕</button>
+    </div>`).join('');
+}
+
+async function deleteFromLoad(id) {
+  if (!confirm('이 설정을 삭제하시겠습니까?')) return;
+  ST.saves = ST.saves.filter(s => s.id !== id);
+  await saveDB();
+  document.getElementById('modal-body').innerHTML = ST.saves.length
+    ? renderLoadMode()
+    : '<div style="text-align:center;color:var(--muted);padding:2rem 0;font-size:.9rem;">저장된 설정이 없습니다.</div>';
+}
+
+async function deleteFromFull(id) {
+  ST.saves = ST.saves.filter(s => s.id !== id);
+  await saveDB();
+  if (ST.saves.length < 10) { showTitleInput(); }
+  else {
+    document.getElementById('modal-body').innerHTML = renderDeleteMode(
+      '최대 10개 저장 가능. 기존 설정 하나를 삭제해 주세요.'
+    );
+  }
+}
+
+function applySave(id) {
+  const save = ST.saves.find(s => s.id === id);
+  if (!save) return;
+  ST.students       = JSON.parse(JSON.stringify(save.students));
+  ST.separateGender = save.separateGender;
+  ST.groupCount     = save.groupCount;
+  ST.groupNames     = [...save.groupNames];
+  ST.preset         = save.preset ? JSON.parse(JSON.stringify(save.preset)) : null;
+  ST.presetEnabled  = save.presetEnabled;
+  closeModal();
+  updateGroupNames(ST.groupCount);
+  renderP1();
+  renderGroupNames();
+}
+
 // ── 시작 ──
 init();
 </script>
+
+<!-- ── 설정 저장/불러오기 모달 ── -->
+<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-hd">
+      <div class="modal-ttl" id="modal-title"></div>
+      <button class="modal-x" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-bd" id="modal-body"></div>
+  </div>
+</div>
 </body>
 </html>
